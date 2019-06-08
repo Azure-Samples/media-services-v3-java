@@ -1,14 +1,28 @@
 # Project Name
 
-(short, 1-3 sentenced, description of the project)
+Java Samples
 
-## Features
+## Examples
 
-This project framework provides the following features:
+This project framework provides the following Examples:
 
-* Feature 1
-* Feature 2
-* ...
+* VideoEncoding
+  * EncodingWithMESPredefinedPreset
+  * EncodingWithMESCustomPreset
+* VideoAnalytics
+  * VideoAndAudioAnalyzer
+* Packager
+  * VODDynamicPackaging
+  * VODDynamicPackagingWithFilters
+* LiveIngest
+  * LiveEventWithDVR
+  * LiveEventTranscription
+* ContentProtection
+  * BasicAESClearKey
+  * BasicWidevine
+  * BasicPlayReady
+  * OfflinePlayReadyAndWidevine
+
 
 ## Getting Started
 
@@ -33,20 +47,6 @@ This project framework provides the following features:
 
 1. git clone [repository clone url]
 2. cd [respository name]
-3. ...
-
-
-## Demo
-
-A demo app is included to show how to use the project.
-
-To run the demo, follow these steps:
-
-(Add steps to start up the demo)
-
-1.
-2.
-3.
 
 ## Resources
 
