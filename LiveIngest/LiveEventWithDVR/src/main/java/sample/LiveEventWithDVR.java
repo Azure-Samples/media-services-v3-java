@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 package sample;
 
 import org.joda.time.Period;
@@ -37,7 +40,7 @@ import com.microsoft.rest.LogLevel;
 public class LiveEventWithDVR {
     public static void main(String[] args) {
         ConfigWrapper config = new ConfigWrapper();
-        runSample(config);
+        runLiveEvent(config);
 
         config.close();
         System.exit(0);
@@ -49,7 +52,7 @@ public class LiveEventWithDVR {
      * @param config The parm is of type ConfigWrapper. This class reads values from local configuration file.
      * @since 05/22/2019
      */
-    private static void runSample(ConfigWrapper config) {
+    private static void runLiveEvent(ConfigWrapper config) {
         ApplicationTokenCredentials credentials = new ApplicationTokenCredentials(config.getAadClientId(),
                 config.getAadTenantId(), config.getAadSecret(), AzureEnvironment.AZURE);
         credentials.withDefaultSubscriptionId(config.getSubscriptionId());
