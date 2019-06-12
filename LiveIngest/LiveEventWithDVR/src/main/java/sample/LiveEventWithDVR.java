@@ -5,6 +5,7 @@ package sample;
 
 import org.joda.time.Period;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Scanner;
 import java.util.UUID;
@@ -12,6 +13,7 @@ import java.util.UUID;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.Asset;
+import com.microsoft.azure.management.mediaservices.v2018_07_01.AssetFilter;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.IPAccessControl;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.IPRange;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.ListPathsResponse;
@@ -25,6 +27,7 @@ import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventPreview
 import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventPreviewAccessControl;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventResourceState;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveOutput;
+import com.microsoft.azure.management.mediaservices.v2018_07_01.PresentationTimeRange;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamOptionsFlag;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingEndpoint;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingEndpointResourceState;
@@ -66,9 +69,11 @@ public class LiveEventWithDVR {
         UUID uuid = UUID.randomUUID();
         String uniqueness = uuid.toString().substring(0, 13);
         String liveEventName = "liveevent-" + uniqueness;
-        String assetName = "archiveAsset" + uuid.toString();
-        String liveOutputName = "liveOutput" + uuid.toString();
-        String streamingLocatorName = "streamingLocator" + uuid.toString();
+        String fullArchiveAssetName = "fullArchiveAsset-" + uuid.toString();
+        String fullArchiveLiveOutputName = "fullArchiveLiveOutput-" + uuid.toString();
+        String dvrStreamingLocatorName = "drvLocator-" + uuid.toString();
+        String fullArchiveStreamingLocator = "fullLocator-" + uuid.toString();
+        String drvAssetFilterName = "filter-" + uniqueness;
         String streamingEndpointName = "se";  // Change this to your Streaming Endpoint name.
 
         Scanner scanner = new Scanner(System.in);
@@ -139,46 +144,52 @@ public class LiveEventWithDVR {
             System.out.println("Press enter to continue...");
             System.out.flush();
             scanner.nextLine();
-
+            
             // Create an unique asset for the LiveOutput to use
-            System.out.println("Creating an asset named " + assetName);
+            System.out.println("Creating an asset named " + fullArchiveAssetName + ".");
             System.out.println();
-            //Asset asset = manager.assets().getAsync(config.getResourceGroup(), config.getAccountName(), assetName).toBlocking().first();
-            //if (asset != null) {
-                // This should not happen
-                // throw new Exception("Asset " + assetName + " already exists.");
-            //}
-            Asset asset = manager.assets().define(assetName).withExistingMediaservice(config.getResourceGroup(), config.getAccountName()).create();
+            Asset fullArchiveAsset = manager.assets().define(fullArchiveAssetName)
+                .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                .create();
 
-            // Create the LiveOutput
+            // Create an AssetFilter for StreamingLocator
+            AssetFilter drvAssetFilter = manager.assetFilters().define(drvAssetFilterName)
+                .withExistingAsset(config.getResourceGroup(), config.getAccountName(), fullArchiveAssetName)
+                .withPresentationTimeRange(new PresentationTimeRange()
+                    .withForceEndTimestamp(false)
+                    // 300 seconds sliding window
+                    .withPresentationWindowDuration(3000000000L)
+                    // This value defines the latest live position that a client can seek back to 30 seconds, should be smaller than sliding window.
+                    .withLiveBackoffDuration(300000000L))
+                .create();
+
             String manifestName = "output";
-            System.out.println("Creating a live output named " + liveOutputName);
-            System.out.println();
-
-            LiveOutput liveOutput = manager.liveOutputs().define(liveOutputName)
+            LiveOutput fullArchiveLiveOutput = manager.liveOutputs().define(fullArchiveLiveOutputName)
                 .withExistingLiveEvent(config.getResourceGroup(), config.getAccountName(), liveEventName)
-                // withArchiveWindowLength: DVR capacity, can be set from 3 minutes to 25 hours. content that falls outside of ArchiveWindowLength
-                // is continuously discarded from storage and is non-recoverable.
-                .withArchiveWindowLength(Period.minutes(10))
-                .withAssetName(asset.name())
+                // withArchiveWindowLength: Can be set from 3 minutes to 25 hours. content that falls outside of ArchiveWindowLength
+                // is continuously discarded from storage and is non-recoverable. For a full event archive, set to the maximum, 25 hours.
+                .withArchiveWindowLength(Period.hours(25))
+                .withAssetName(fullArchiveAsset.name())
                 .withManifestName(manifestName)
                 .create();
 
-
             // Create the StreamingLocator
-            System.out.println("Creating a streaming locator named " + streamingLocatorName);
+            System.out.println("Creating a streaming locator named " + dvrStreamingLocatorName);
             System.out.println();
             
-            StreamingLocator streamingLocator = manager.streamingLocators().define(streamingLocatorName)
+            List<String> assetFilters = new ArrayList<>();
+            assetFilters.add(drvAssetFilterName);
+            StreamingLocator streamingLocator = manager.streamingLocators().define(dvrStreamingLocatorName)
                 .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
-                .withAssetName(asset.name())
+                .withAssetName(fullArchiveAsset.name())
                 .withStreamingPolicyName("Predefined_ClearStreamingOnly")
+                .withFilters(assetFilters)  // Associate filters with Streaming locator
                 .create();
 
             // Get a Streaming Endpoint on the account, the streaming endpoint must exist.
             StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
                 .getAsync(config.getResourceGroup(), config.getAccountName(), streamingEndpointName)
-                .toBlocking().last();
+                .toBlocking().first();
             if (streamingEndpoint == null) {
                 throw new Exception("Streaming Endpoint " + streamingEndpointName + " does not exist.");
             }
@@ -191,46 +202,44 @@ public class LiveEventWithDVR {
                     .await();
             }
 
-            // Get the url to stream the output
-            ListPathsResponse paths = manager.streamingLocators()
-                .listPathsAsync(config.getResourceGroup(), config.getAccountName(), streamingLocatorName)
-                .toBlocking().last();
-            System.out.println("The urls to stream the output from a client:");
+            System.out.println("The urls to stream the LiveEvent from a client:");
             System.out.println();
-            StringBuilder stringBuilder = new StringBuilder();
-            String playerPath = "";
-            for (StreamingPath streamingPath: paths.streamingPaths()) {
-                if (streamingPath.paths().size() > 0) {
-                    stringBuilder.append("\t" + streamingPath.streamingProtocol() + "-" + streamingPath.encryptionScheme() + "\n");
-                    String strStreamingUlr = "https://" + streamingEndpoint.hostName() + "/" + streamingPath.paths().get(0);
-                    stringBuilder.append("\t\t" + strStreamingUlr + "\n");
+            
+            // print the urls for the LiveEvent.
+            printPaths(config, manager, dvrStreamingLocatorName, streamingEndpoint);
 
-                    if (streamingPath.streamingProtocol() == StreamingPolicyStreamingProtocol.DASH) {
-                        playerPath = strStreamingUlr;
-                    }
-                }
-            }
+            System.out.println("If you see an error in Azure Media Player, wait a few moments and try the url again.");
+            System.out.println("Continue experimenting with the stream until you are ready to finish.");
+            System.out.println("Press ENTER to stop the LiveOutput...");
+            System.out.flush();
+            scanner.nextLine();
 
-            if (stringBuilder.length() > 0) {
-                System.out.println(stringBuilder.toString());
-                System.out.println("Open the following URL to playback the published,recording LiveOutput in the Azure Media Player");
-                System.out.println("\t https://ampdemo.azureedge.net/?url=" + playerPath + "&heuristicprofile=lowlatency");
-                System.out.println();
+            System.out.println("Stopping the LiveEvent...");
+            CleanupLiveEventAndOutput(manager, config.getResourceGroup(), config.getAccountName(), liveEventName);
+            System.out.println("The LiveEvent has ended.");
+            System.out.println();
 
-                System.out.println("Continue experimenting with the stream until you are ready to finish.");
-                System.out.println("Press enter to stop the LiveOutput...");
-                System.out.flush();
-                scanner.nextLine();
-            }
-        }
-        catch (Exception e) {
+            // Create a streaming locator for the full archive
+            StreamingLocator fullStreamingLocator = manager.streamingLocators().define(fullArchiveStreamingLocator)
+                .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                .withAssetName(fullArchiveAsset.name())
+                .withStreamingPolicyName("Predefined_ClearStreamingOnly")
+                .create();
+            
+            System.out.println("To playback the full event from a client, Use the following urls:");
+            System.out.println();
+
+            // Print urls for the full archinve.
+            printPaths(config, manager, fullArchiveStreamingLocator, streamingEndpoint);
+            System.out.println("Press ENTER to finish.");
+            System.out.println();
+            System.out.flush();
+            scanner.nextLine();
+
+        } catch (Exception e) {
             System.out.println(e);
             e.printStackTrace();
-        }
-        finally {
-            System.out.println("Cleaning up...");
-            CleanupLiveEventAndOutput(manager, config.getResourceGroup(), config.getAccountName(), liveEventName, liveOutputName);
-            CleanupLocatorandAsset(manager, config.getResourceGroup(), config.getAccountName(), streamingLocatorName, assetName);
+        } finally {
             if (scanner != null) {
                 scanner.close();
             }
@@ -238,41 +247,64 @@ public class LiveEventWithDVR {
     }
 
     /**
-     * Cleanup 
+     * Build and print streaming URLs.
+     * @param config                The configuration.
+     * @param manager               The entry poiint of Azure Media resource management.
+     * @param streamingLocatorName  The locator name.
+     * @param streamingEndpoint     The streaming endpoint.
+     */
+    private static void printPaths(ConfigWrapper config, MediaManager manager, String streamingLocatorName,
+            StreamingEndpoint streamingEndpoint) {
+        ListPathsResponse paths = manager.streamingLocators()
+                .listPathsAsync(config.getResourceGroup(), config.getAccountName(), streamingLocatorName)
+                .toBlocking().first();
+
+        StringBuilder stringBuilder = new StringBuilder();
+        String playerPath = "";
+        for (StreamingPath streamingPath : paths.streamingPaths()) {
+            if (streamingPath.paths().size() > 0) {
+                stringBuilder.append(
+                        "\t" + streamingPath.streamingProtocol() + "-" + streamingPath.encryptionScheme() + "\n");
+                String strStreamingUlr = "https://" + streamingEndpoint.hostName() + "/" + streamingPath.paths().get(0);
+                stringBuilder.append("\t\t" + strStreamingUlr + "\n");
+
+                if (streamingPath.streamingProtocol() == StreamingPolicyStreamingProtocol.DASH) {
+                    playerPath = strStreamingUlr;
+                }
+            }
+        }
+
+        if (stringBuilder.length() > 0) {
+            System.out.println(stringBuilder.toString());
+
+            System.out.println("Open the following URL to playback in the Azure Media Player");
+            System.out.println("\t https://ampdemo.azureedge.net/?url=" + playerPath + "&heuristicprofile=lowlatency");
+            System.out.println();
+        }
+    }
+
+    /**
+     * Cleanup LiveEvent
      * @param manager               The entry poiint of Azure Media resource management
      * @param resourceGroupName     The name of the resource group within the Azure subscription
      * @param accountName           The Media Services account name
      * @param liveEventName         The name of the LiveEvent
      * @param liveOutputName        The LiveOutput name
      */
-    private static void CleanupLiveEventAndOutput(MediaManager manager, String resourceGroup, String accountName, String liveEventName, String liveOutputName) {
+    private static void CleanupLiveEventAndOutput(MediaManager manager, String resourceGroup, String accountName, String liveEventName) {
         // Cleanup LiveOutput first
-        LiveOutput liveOutput = manager.liveOutputs().getAsync(resourceGroup, accountName, liveEventName, liveOutputName).toBlocking().last();
-        if (liveOutput != null) {
-            manager.liveOutputs().deleteAsync(resourceGroup, accountName, liveEventName, liveOutputName).await();
+        Iterator<LiveOutput> iter = manager.liveOutputs().listAsync(resourceGroup, accountName, liveEventName).toBlocking().getIterator();
+        while (iter.hasNext()) {
+            LiveOutput liveOutput = iter.next();
+            manager.liveOutputs().deleteAsync(resourceGroup, accountName, liveEventName, liveOutput.name()).await();
         }
 
-        LiveEvent liveEvent = manager.liveEvents().getAsync(resourceGroup, accountName, liveEventName).toBlocking().last();
+        LiveEvent liveEvent = manager.liveEvents().getAsync(resourceGroup, accountName, liveEventName).toBlocking().first();
         if (liveEvent != null) {
             if (liveEvent.resourceState() == LiveEventResourceState.RUNNING) {
                 manager.liveEvents().stopAsync(resourceGroup, accountName, liveEventName).await();
             }
             manager.liveEvents().deleteAsync(resourceGroup, accountName, liveEventName).await();
         }
-    }
-
-    /**
-     * Cleanup 
-     * @param manager               The entry poiint of Azure Media resource management
-     * @param resourceGroupName     The name of the resource group within the Azure subscription
-     * @param accountName           The Media Services account name
-     * @param streamingLocatorName  The streaming locator name
-     * @param assetName             The asset name
-     */
-    private static void CleanupLocatorandAsset(MediaManager manager, String resourceGroup, String accountName, String streamingLocatorName, String assetName) {
-        manager.streamingLocators().deleteAsync(resourceGroup, accountName, streamingLocatorName).await();
-
-        // Asset is the DRV content. Do not delete if you want to keep.
-        //manager.assets().deleteAsync(resourceGroup, accountName, assetName).await();
     }
 }
