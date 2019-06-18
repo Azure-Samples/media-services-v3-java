@@ -159,7 +159,7 @@ public class LiveEventWithDVR {
                     .withForceEndTimestamp(false)
                     // 300 seconds sliding window
                     .withPresentationWindowDuration(3000000000L)
-                    // This value defines the latest live position that a client can seek back to 30 seconds, should be smaller than sliding window.
+                    // This value defines the latest live position that a client can seek back to 30 seconds, must be smaller than sliding window.
                     .withLiveBackoffDuration(300000000L))
                 .create();
 
