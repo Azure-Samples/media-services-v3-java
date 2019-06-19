@@ -11,7 +11,9 @@ import org.json.simple.parser.JSONParser;
 
 /**
  * This class reads values from local configuration file resources/conf/appsettings.json
- * Please change the configuration using your account information.
+ * Please change the configuration using your account information. For more information, see
+ * https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to. For security
+ * reasons, do not check in the configuration file to source control.
  */
 public class ConfigWrapper {
     private static final String AAD_CLIENT_ID = "AadClientId";
