@@ -7,7 +7,7 @@ products:
 ---
 
 #EncodingWithMESPredefinedPreset
-This sample shows how to submit a job using a built-in preset and an HTTP URL input, publish output asset for straming, and download results for verification.
+This sample shows how to submit a job using a built-in preset and an HTTP URL input, publish output asset for streaming, and download results for verification.
 
 ## Prerequisites
   * Java JDK and Maven installed.

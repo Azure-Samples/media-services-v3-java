@@ -99,7 +99,7 @@ public class LiveEventWithDVR {
 
             // Set this to Default or Low Latency
             // When using Low Latency mode, you must configure the Azure Media Player to use the 
-            // quick start hueristic profile or you won't notice the change. 
+            // quick start heuristic profile or you won't notice the change. 
             // In the AMP player client side JS options, set -  heuristicProfile: "Low Latency Heuristic Profile". 
             // To use low latency optimally, you should tune your encoder settings down to 1 second GOP size instead of 2 seconds.
             List<StreamOptionsFlag> streamOptions = new ArrayList<>();
@@ -108,7 +108,7 @@ public class LiveEventWithDVR {
             // When autostart is set to true, the Live Event will be started after creation. 
             // That means, the billing starts as soon as the Live Event starts running. 
             // You must explicitly call Stop on the Live Event resource to halt further billing.
-            // The following operation can sometimes take awhile. Be patient.
+            // The following operation can sometimes take awhile. Please be patient.
             // Set EncodingType to STANDARD to enable a transcoding LiveEvent, and NONE to enable a pass-through LiveEvent
             System.out.println("Creating the LiveEvent, please be patient this can take time...");
             LiveEvent liveEvent = manager.liveEvents().define(liveEventName)
@@ -140,7 +140,7 @@ public class LiveEventWithDVR {
             System.out.println();
 
             System.out.println("Start the live stream now, sending the input to the ingest url and verify that it is arriving with the preview url.");
-            System.out.println("IMPORTANT TIP!: Make ABSOLUTLEY CERTAIN that the video is flowing to the Preview URL before continuing!");
+            System.out.println("IMPORTANT TIP!: Make ABSOLUTELY CERTAIN that the video is flowing to the Preview URL before continuing!");
             System.out.println("Press enter to continue...");
             System.out.flush();
             scanner.nextLine();
@@ -183,10 +183,10 @@ public class LiveEventWithDVR {
                 .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
                 .withAssetName(fullArchiveAsset.name())
                 .withStreamingPolicyName("Predefined_ClearStreamingOnly")
-                .withFilters(assetFilters)  // Associate filters with Streaming locator
+                .withFilters(assetFilters)  // Associate filters with StreamingLocator
                 .create();
 
-            // Get a Streaming Endpoint on the account, the streaming endpoint must exist.
+            // Get a Streaming Endpoint on the account, the Streaming Endpoint must exist.
             StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
                 .getAsync(config.getResourceGroup(), config.getAccountName(), streamingEndpointName)
                 .toBlocking().first();
@@ -194,7 +194,7 @@ public class LiveEventWithDVR {
                 throw new Exception("Streaming Endpoint " + streamingEndpointName + " does not exist.");
             }
 
-            // If it's not running, Start it.
+            // If the Streaming Endpoint is not running, start it.
             if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
                 System.out.println("Streaming Endpoint was Stopped, restarting now...");
                 manager.streamingEndpoints()
@@ -205,7 +205,7 @@ public class LiveEventWithDVR {
             System.out.println("The urls to stream the LiveEvent from a client:");
             System.out.println();
             
-            // print the urls for the LiveEvent.
+            // Print the urls for the LiveEvent.
             printPaths(config, manager, dvrStreamingLocatorName, streamingEndpoint);
 
             System.out.println("If you see an error in Azure Media Player, wait a few moments and try the url again.");
@@ -219,7 +219,7 @@ public class LiveEventWithDVR {
             System.out.println("The LiveEvent has ended.");
             System.out.println();
 
-            // Create a streaming locator for the full archive
+            // Create a StreamingLocator for the full archive.
             StreamingLocator fullStreamingLocator = manager.streamingLocators().define(fullArchiveStreamingLocator)
                 .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
                 .withAssetName(fullArchiveAsset.name())
@@ -229,7 +229,7 @@ public class LiveEventWithDVR {
             System.out.println("To playback the full event from a client, Use the following urls:");
             System.out.println();
 
-            // Print urls for the full archinve.
+            // Print urls for the full archive.
             printPaths(config, manager, fullArchiveStreamingLocator, streamingEndpoint);
             System.out.println("Press ENTER to finish.");
             System.out.println();
