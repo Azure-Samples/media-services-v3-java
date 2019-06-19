@@ -11,7 +11,7 @@ This sample first shows how to create a LiveEvent with a full archive up to 25 h
 
 ## Prerequisites
 To run the sample, you need:
-  * A camera connected to your compueter.
+  * A camera connected to your computer.
   * A media encoder. For a recommended encoder, please visit https://docs.microsoft.com/en-us/azure/media-services/latest/recommended-on-premises-live-encoders.
   * Java JDK and Maven installed.
   * An Azure Media Services account. See the steps described in [Create a Media Services account](https://docs.microsoft.com/azure/media-services/latest/create-account-cli-quickstart).
