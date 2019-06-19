@@ -120,7 +120,7 @@ public class EncodingWithMESPredefinedPreset {
             job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME,
                     jobName);
 
-            long elapsed = (System.currentTimeMillis() - startedTime) / 1000; // Eplased time in seconds
+            long elapsed = (System.currentTimeMillis() - startedTime) / 1000; // Elapsed time in seconds
             System.out.println("Job elapsed time: " + elapsed + " second(s).");
 
             if (job.state() == JobState.FINISHED) {
