@@ -188,7 +188,7 @@ public class EncodingWithMESPredefinedPreset {
      * exist, creates a new transform with the specified output. In this case, the
      * output is set to encode a video using the passed in preset.
      * 
-     * @param manager       The entry poiint of Azure Media resource management
+     * @param manager       The entry point of Azure Media resource management
      * @param resourceGroup The name of the resource group within the Azure subscription
      * @param accountName   The Media Services account name
      * @param transformName The name of the transform
@@ -208,7 +208,7 @@ public class EncodingWithMESPredefinedPreset {
         }
         catch(NoSuchElementException nse)
         {
-            // Media Ervices V3 throws an exception when not found.
+            // Media Services V3 throws an exception when not found.
             transform = null;
         }
 
@@ -229,7 +229,7 @@ public class EncodingWithMESPredefinedPreset {
 
     /**
      * Create an asset
-     * @param manager       The entry poiint of Azure Media resource management.
+     * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param assetName     The name of the asset to be created. It is known to be unique.
@@ -245,7 +245,7 @@ public class EncodingWithMESPredefinedPreset {
 
     /**
      * 
-     * @param manager           The entry poiint of Azure Media resource management.
+     * @param manager           The entry point of Azure Media resource management.
      * @param resourceGroup     The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
      * @param transformName     The name of the transform.
@@ -272,7 +272,7 @@ public class EncodingWithMESPredefinedPreset {
     /**
      * Polls Media Services for the status of the Job.
      * 
-     * @param manager       This is the entry poiint of Azure Media resource
+     * @param manager       This is the entry point of Azure Media resource
      *                      management
      * @param resourceGroup The name of the resource group within the Azure
      *                      subscription
@@ -318,11 +318,11 @@ public class EncodingWithMESPredefinedPreset {
 
     /**
      * Use Media Service and Storage APIs to download the output files to a local folder
-     * @param manager               The entry poiint of Azure Media resource management
+     * @param manager               The entry point of Azure Media resource management
      * @param resourceGroup         The name of the resource group within the Azure subscription
      * @param accountName           The Media Services account name
      * @param assetName             The asset name
-     * @param outputFolder          The output folder for doanloaded files.
+     * @param outputFolder          The output folder for downloaded files.
      * @throws StorageException
      * @throws URISyntaxException
      * @throws IOException
@@ -358,7 +358,7 @@ public class EncodingWithMESPredefinedPreset {
     /**
      * Creates a StreamingLocator for the specified asset and with the specified streaming policy name.
      * Once the StreamingLocator is created the output asset is available to clients for playback.
-     * @param manager       The entry poiint of Azure Media resource management
+     * @param manager       The entry point of Azure Media resource management
      * @param resourceGroup The name of the resource group within the Azure subscription
      * @param accountName   The Media Services account name
      * @param assetName     The name of the output asset
@@ -381,7 +381,7 @@ public class EncodingWithMESPredefinedPreset {
 
     /**
      * Checks if the streaming endpoint is in the running state, if not, starts it.
-     * @param manager       The entry poiint of Azure Media resource management
+     * @param manager       The entry point of Azure Media resource management
      * @param resourceGroup The name of the resource group within the Azure subscription
      * @param accountName   The Media Services account name
      * @param locatorName   The name of the StreamingLocator that was created
@@ -418,7 +418,7 @@ public class EncodingWithMESPredefinedPreset {
 
     /**
      * Cleanup 
-     * @param manager               The entry poiint of Azure Media resource management.
+     * @param manager               The entry point of Azure Media resource management.
      * @param resourceGroupName     The name of the resource group within the Azure subscription.
      * @param accountName           The Media Services account name.
      * @param transformName         The transform name.
