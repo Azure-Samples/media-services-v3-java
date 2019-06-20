@@ -249,7 +249,7 @@ public class LiveEventWithDVR {
     /**
      * Build and print streaming URLs.
      * @param config                The configuration.
-     * @param manager               The entry poiint of Azure Media resource management.
+     * @param manager               The entry point of Azure Media resource management.
      * @param streamingLocatorName  The locator name.
      * @param streamingEndpoint     The streaming endpoint.
      */
@@ -285,7 +285,7 @@ public class LiveEventWithDVR {
 
     /**
      * Cleanup LiveEvent
-     * @param manager               The entry poiint of Azure Media resource management
+     * @param manager               The entry point of Azure Media resource management
      * @param resourceGroupName     The name of the resource group within the Azure subscription
      * @param accountName           The Media Services account name
      * @param liveEventName         The name of the LiveEvent
