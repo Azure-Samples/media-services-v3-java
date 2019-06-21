@@ -23,35 +23,26 @@ This project framework provides the following Examples:
   * BasicPlayReady
   * OfflinePlayReadyAndWidevine
 
-
 ## Getting Started
 
 ### Prerequisites
 
-(ideally very short, if any)
+* Java JDK 1.8 or newer version installed.
+* Maven installed.
+* An Azure Media Services account. See the link in Resources.
 
-- OS
-- Library version
-- ...
 
 ### Installation
 
-(ideally very short)
-
-- npm install [package name]
-- mvn install
-- ...
 
 ### Quickstart
 (Add steps to get up and running quickly)
 
 1. git clone [repository clone url]
 2. cd [respository name]
+3. cd [project name]\[Sample name]
+4. Follow the instructins in each sample's README.md to build and run.
 
 ## Resources
 
-(Any additional resources or related projects)
-
-- Link to supporting information
-- Link to similar sample
-- ...
+[Create a Media Services account](https://docs.microsoft.com/azure/media-services/latest/create-account-cli-quickstart)
