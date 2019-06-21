@@ -6,13 +6,14 @@ products:
   - azure-media-services
 ---
 
-# VideoAndAudioAnalyzer
+# BasicAESClearKey
 
-This sample illustrates how to create a transform with a built-in AdaptiveStreaming preset, submit a job, create a ContentKeyPolicy using a secret key, associate the ContentKeyPolicy with StreamingLocator, get a token and print a url for playback in Azure Media Player. When streaming, When a stream is requested by a player, Media Services uses the specified key to dynamically encrypt your content with AES-128 and Azure Media Player uses the token to decrypt.
+This sample illustrates how to create a transform with built-in AdaptiveStreaming preset, submit a job, create a ContentKeyPolicy using a secret key, associate the ContentKeyPolicy with StreamingLocator, get a token and print a url for playback in Azure Media Player. When a stream is requested by a player, Media Services uses the specified key to dynamically encrypt your content with AES-128 and Azure Media Player uses the token to decrypt.
 
 ## Prerequisites
 
-* Java JDK and Maven installed.
+* Java JDK 1.8 or newer installed
+* Maven installed.
 * An Azure Media Services account. See the steps described in [Create a Media Services account](https://docs.microsoft.com/azure/media-services/latest/create-account-cli-quickstart).
 
 ## Build and run

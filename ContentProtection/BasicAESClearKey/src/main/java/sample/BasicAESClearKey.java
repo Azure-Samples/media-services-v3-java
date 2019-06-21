@@ -79,7 +79,7 @@ public class BasicAESClearKey
 
     /**
      * Run the sample.
-     * @param config    The parm is of type ConfigWrapper, which reads values from local configuration file
+     * @param config    This param is of type ConfigWrapper, which reads values from local configuration file.
      */
     private static void runAESClearKeyTest(ConfigWrapper config) {
         // Connect to media services, please see https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
