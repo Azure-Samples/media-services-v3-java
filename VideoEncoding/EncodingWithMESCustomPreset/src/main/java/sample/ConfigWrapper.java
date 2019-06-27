@@ -1,0 +1,97 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+package sample;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+
+/**
+ * This class reads values from local configuration file
+ * resources/conf/appsettings.json Please change the configuration using your
+ * account information.
+ */
+public class ConfigWrapper {
+    private static final String AAD_CLIENT_ID = "AadClientId";
+    private static final String AAD_ENDPOINT = "AadEndpoint";
+    private static final String AAD_SECRET = "AadSecret";
+    private static final String AAD_TENANT_ID = "AadTenantId";
+    private static final String ACCOUNT_NAME = "AccountName";
+    private static final String ARM_AAD_AUDIENCE = "ArmAadAudience";
+    private static final String ARM_ENDPOINT = "ArmEndpoint";
+    private static final String REGION = "Region";
+    private static final String RESOURCE_GROUP = "ResourceGroup";
+    private static final String SUBSCRIPTION_ID = "SubscriptionId";
+    private static final String CONF_JSON = "conf/appsettings.json";
+    private final JSONObject jsonObject;
+    private final InputStreamReader isReader;
+
+    public ConfigWrapper() { 
+        InputStream inStream = ConfigWrapper.class.getClassLoader().getResourceAsStream(CONF_JSON);
+        isReader = new InputStreamReader(inStream);
+
+        JSONParser parser = new JSONParser();
+        Object obj = null;
+        try {
+            obj = parser.parse(isReader);
+        } catch (Exception ioe) {
+            System.err.println(ioe);
+            System.exit(1);
+        }
+
+        jsonObject = (JSONObject) obj;
+    }
+
+    public void close() {
+        try {
+            if (isReader != null) {
+                isReader.close();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String getAadClientId() {
+        return (String)jsonObject.get(AAD_CLIENT_ID);
+    }
+
+    public String getAadEndpoint() {
+        return (String)jsonObject.get(AAD_ENDPOINT);
+    }
+
+    public String getAadSecret() {
+        return (String)jsonObject.get(AAD_SECRET);
+    }
+
+    public String getAadTenantId() {
+        return (String)jsonObject.get(AAD_TENANT_ID);
+    }
+
+    public String getAccountName() {
+        return (String)jsonObject.get(ACCOUNT_NAME);
+    }
+
+    public String getArmAadAudience() {
+        return (String)jsonObject.get(ARM_AAD_AUDIENCE);
+    }
+
+    public String getArmEndpoint() {
+        return (String)jsonObject.get(ARM_ENDPOINT);
+    }
+
+    public String getRegion() {
+        return (String)jsonObject.get(REGION);
+    }
+
+    public String getResourceGroup() {
+        return (String)jsonObject.get(RESOURCE_GROUP);
+    }
+
+    public String getSubscriptionId() {
+        return (String)jsonObject.get(SUBSCRIPTION_ID);
+    }
+}
