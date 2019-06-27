@@ -151,7 +151,7 @@ public class BasicAESClearKey
                 // generate our test token we must get the ContentKeyId to put in the ContentKeyIdentifierClaim claim.
                 String keyIdentifier = locator.contentKeys().get(0).id().toString();
 
-                String token = getToken(ISSUER, AUDIENCE, keyIdentifier, TOKEN_SIGNING_KEY);
+                String token = createToken(ISSUER, AUDIENCE, keyIdentifier, TOKEN_SIGNING_KEY);
 
                 String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
 
@@ -385,7 +385,7 @@ public class BasicAESClearKey
      * @return                      The token.
      * @throws JwtException
      */
-    private static String getToken(String issuer, String audience, String keyIdentifier,
+    private static String createToken(String issuer, String audience, String keyIdentifier,
         byte[] tokenVerificationKey) throws JwtException{
         
         String jws = null;
