@@ -163,7 +163,7 @@ public class BasicWidevine {
                 System.out.println("KeyIdentifier = " + keyIdentifier);
                 
                 // In order to generate our test token we must get the ContentKeyId to put in the ContentKeyIdentifierClaim claim.
-                String token = getToken(ISSUER, AUDIENCE, keyIdentifier, TOKEN_SIGNING_KEY);
+                String token = createToken(ISSUER, AUDIENCE, keyIdentifier, TOKEN_SIGNING_KEY);
 
                 String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
 
@@ -394,8 +394,6 @@ public class BasicWidevine {
             ContentKeyPolicyWidevineConfiguration widevineConfig = configureWidevineLicenseTemplate();
 
             List<ContentKeyPolicyOption> options = new ArrayList<>();
-
-
             options.add(new ContentKeyPolicyOption()
                 .withConfiguration(widevineConfig)
                 .withRestriction(restriction));
@@ -471,7 +469,7 @@ public class BasicWidevine {
      * @return                      The token.
      * @throws JwtException
      */
-    private static String getToken(String issuer, String audience, String keyIdentifier,
+    private static String createToken(String issuer, String audience, String keyIdentifier,
         byte[] tokenVerificationKey) throws JwtException{
         
         String jws = null;
