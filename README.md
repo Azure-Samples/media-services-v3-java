@@ -23,35 +23,33 @@ This project framework provides the following Examples:
   * BasicPlayReady
   * OfflinePlayReadyAndWidevine
 
+These samples were developed on Windows 10.
 
 ## Getting Started
 
-### Prerequisites
+- A computer running Windows 10.
+- Java JDK version 1.8 or higher.
+- Maven
 
-(ideally very short, if any)
-
-- OS
-- Library version
-- ...
 
 ### Installation
 
-(ideally very short)
+- Install Maven from https://maven.apache.org/download.cgi.
+- Update environment variable PATH to include Maven binaries location e.g. "c:\apache-maven-3.6.1\bin".
+- Install Java JDK from http://openjdk.java.net/
+- Update environment variable PATH to include JDK binaries location e.g. "C:\Program Files\Java\jdk-11.0.3\bin".
 
-- npm install [package name]
-- mvn install
-- ...
 
 ### Quickstart
-(Add steps to get up and running quickly)
 
-1. git clone [repository clone url]
-2. cd [respository name]
+In CMD or other shell window:
+- git clone [repository clone url]
+- cd [respository name]
+- cd [a sample folder], e.g. "LiveIngest/LiveEventWithDVR"
+- Read README.md in the sample folder.
 
 ## Resources
 
-(Any additional resources or related projects)
-
 - Azure Media Services documentation: https://docs.microsoft.com/en-us/azure/media-services/
 - Azure Media Services pricing: https://azure.microsoft.com/en-in/pricing/details/media-services/
-- ...
+- .Net samples: https://github.com/Azure-Samples/media-services-v3-dotnet
