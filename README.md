@@ -6,9 +6,9 @@ products:
   - azure-media-services
 ---
 
-# Azure Media Services v3 samples
+# Azure Media Services v3 samples using Java
 
-The samples in this repo show how to encode, package, protect your videos. The repo also contains samples that demonstrate how to analyze videos and perform live ingest in order to broadcast your events.  
+The samples in this repo show how to encode, package, protect your videos with Azure Media Services using Java SDK. The repo also contains samples that demonstrate how to analyze videos and perform live ingest in order to broadcast your events.  
 
 ## Contents
 
