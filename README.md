@@ -8,7 +8,7 @@ products:
 
 # Azure Media Services v3 samples using Java
 
-The samples in this repo show how to encode, package, protect your videos with Azure Media Services using Java SDK. The repo also contains samples that demonstrate how to analyze videos and perform live ingest in order to broadcast your events.  
+The samples in this repo show how to encode, package, protect your videos with Azure Media Services v3 using Java SDK. The repo also contains samples that demonstrate how to analyze videos and perform live ingest in order to broadcast your events.  
 
 ## Contents
 
@@ -23,27 +23,21 @@ The samples in this repo show how to encode, package, protect your videos with A
 
 ## Prerequisites
 
-### Installation
-
 - Install Maven from https://maven.apache.org/download.cgi.
 - Update environment variable PATH to include Maven binaries location e.g. "c:\apache-maven-3.6.1\bin".
 - Install Java JDK 1.8 or higher from http://openjdk.java.net/
 - Update environment variable PATH to include JDK binaries location e.g. "C:\Program Files\Java\jdk-11.0.3\bin".
 
-### Documentation
-
-Review the **Concepts** section of the [Media Services documentation](https://docs.microsoft.com/en-us/azure/media-services/latest/).
- 
 ## Setup
 
-In CMD or other shell window:
-
 1. Clone or download this sample repository
-2. cd [respository name]
-3. cd [a sample folder], e.g. "LiveIngest/LiveEventWithDVR"
-4. Read README.md in the sample folder to see what key concepts to review and how to set up and run the sample.
+1. Open a terminal window and cd to the sample you are interested in (for example, ContentProtection\BasicAESClearKey)
+1. Read README.md to see what key concepts to review and how to set up and run the sample
+
+## See also
+
+.Net samples: https://github.com/Azure-Samples/media-services-v3-dotnet
 
 ## Next steps
 
-- Azure Media Services pricing: https://azure.microsoft.com/en-in/pricing/details/media-services/
-- .Net samples: https://github.com/Azure-Samples/media-services-v3-dotnet
+Review [Azure Media Services pricing](https://azure.microsoft.com/pricing/details/media-services/)
