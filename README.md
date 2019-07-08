@@ -40,4 +40,6 @@ The samples in this repo show how to encode, package, protect your videos with A
 
 ## Next steps
 
-Review [Azure Media Services pricing](https://azure.microsoft.com/pricing/details/media-services/)
+- [Azure Media Services pricing](https://azure.microsoft.com/pricing/details/media-services/)
+- [Azure Media Services v3 Documentation](https://docs.microsoft.com/azure/media-services/latest/)
+
