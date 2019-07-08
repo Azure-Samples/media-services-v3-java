@@ -47,4 +47,6 @@ When a stream is requested by a player, Media Services uses the specified key to
 
 ## Next steps
 
-Review [Azure Media Services pricing](https://azure.microsoft.com/pricing/details/media-services/)
+- [Azure Media Services pricing](https://azure.microsoft.com/pricing/details/media-services/)
+- [Azure Media Services v3 Documentation](https://docs.microsoft.com/azure/media-services/latest/)
+
