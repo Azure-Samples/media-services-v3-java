@@ -5,7 +5,7 @@ languages:
 products:
   - azure
   - azure-media-services
-description: "The samples in this repo show how to encode, package, protect your videos with Azure Media Services v3 using Java SDK."  
+description: "The samples in this repo show how to encode, package, protect, analyze your videos with Azure Media Services v3 using Java SDK."  
 ---
 
 # Azure Media Services v3 samples using Java
