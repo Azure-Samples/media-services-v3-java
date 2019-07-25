@@ -27,6 +27,13 @@ public class ConfigWrapper {
     private static final String RESOURCE_GROUP = "ResourceGroup";
     private static final String SUBSCRIPTION_ID = "SubscriptionId";
     private static final String CONF_JSON = "conf/appsettings.json";
+    private static final String NAMESPACE_NAME = "NamespaceName";
+    private static final String EVENT_HUB_CONNECTION_STRING = "EventHubConnectionString";
+    private static final String EVENT_HUB_NAME = "EventHubName";
+    private static final String STORAGE_CONTAINER_NAME = "StorageContainerName";
+    private static final String STORAGE_ACCOUNT_NAME = "StorageAccountName";
+    private static final String STORAGE_ACCOUNT_KEY = "StorageAccountKey";
+
     private final JSONObject jsonObject;
     private final InputStreamReader isReader;
 
@@ -97,5 +104,29 @@ public class ConfigWrapper {
 
     public String getSubscriptionId() {
         return (String)jsonObject.get(SUBSCRIPTION_ID);
+    }
+
+    public String getNamespaceName() {
+        return (String)jsonObject.get(NAMESPACE_NAME);
+    }
+
+    public String getEventHubConnectionString() {
+        return (String)jsonObject.get(EVENT_HUB_CONNECTION_STRING);
+    }
+
+    public String getEventHubName() {
+        return (String)jsonObject.get(EVENT_HUB_NAME);
+    }
+
+    public String getStorageContainerName() {
+        return (String)jsonObject.get(STORAGE_CONTAINER_NAME);
+    }
+
+    public String getStorageAccountName() {
+        return (String)jsonObject.get(STORAGE_ACCOUNT_NAME);
+    }
+
+    public String getStorageAccountKey() {
+        return (String)jsonObject.get(STORAGE_ACCOUNT_KEY);
     }
 }
