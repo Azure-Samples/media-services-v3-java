@@ -5,13 +5,17 @@ package sample;
 
 import org.joda.time.Period;
 import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Scanner;
 import java.util.UUID;
 
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
+import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.AzureEnvironment;
+import com.microsoft.azure.eventprocessorhost.EventProcessorHost;
+import com.microsoft.azure.eventprocessorhost.EventProcessorOptions;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.Asset;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.AssetFilter;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.IPAccessControl;
@@ -35,6 +39,11 @@ import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingLocator
 import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingPath;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingPolicyStreamingProtocol;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.implementation.MediaManager;
+import com.microsoft.azure.storage.blob.CloudBlobContainer;
+import com.microsoft.azure.storage.blob.ListBlobItem;
+import com.microsoft.azure.storage.blob.CloudBlobClient;
+import com.microsoft.azure.storage.blob.CloudBlob;
+import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.rest.LogLevel;
 
 /**
@@ -52,10 +61,11 @@ public class LiveEventWithDVR {
     /**
      * Runs the Live Event sample.
      * 
-     * @param config The parm is of type ConfigWrapper. This class reads values from local configuration file.
-     * @since 05/22/2019
+     * @param config This param is of type ConfigWrapper, which reads values from local configuration file.
      */
     private static void runLiveEvent(ConfigWrapper config) {
+        // Connect to media services, please see https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
+        // for details.
         ApplicationTokenCredentials credentials = new ApplicationTokenCredentials(config.getAadClientId(),
                 config.getAadTenantId(), config.getAadSecret(), AzureEnvironment.AZURE);
         credentials.withDefaultSubscriptionId(config.getSubscriptionId());
@@ -75,6 +85,7 @@ public class LiveEventWithDVR {
         String fullArchiveStreamingLocator = "fullLocator-" + uuid.toString();
         String drvAssetFilterName = "filter-" + uniqueness;
         String streamingEndpointName = "se";  // Change this to your Streaming Endpoint name.
+        EventProcessorHost eventProcessorHost = null;
 
         Scanner scanner = new Scanner(System.in);
 
@@ -105,6 +116,44 @@ public class LiveEventWithDVR {
             List<StreamOptionsFlag> streamOptions = new ArrayList<>();
             streamOptions.add(StreamOptionsFlag.LOW_LATENCY);
 
+            // Start monitoring LiveEvent events.
+            try {
+                System.out.println("Starting monitoring LiveEvent events...");
+                String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
+                    config.getStorageAccountName() +
+                    ";AccountKey=" + config.getStorageAccountKey();
+
+                // Cleanup storage container. We will config Event Hub to use the storage container configured in appsettings.json.
+                // All the blobs in <The container configured in appsettings.json>/$Default will be deleted.
+                CloudStorageAccount account = CloudStorageAccount.parse(storageConnectionString);
+                CloudBlobClient client = account.createCloudBlobClient();
+                CloudBlobContainer container = client.getContainerReference(config.getStorageContainerName());
+                for (ListBlobItem item : container.listBlobs("$Default/", true)) {
+                    if (item instanceof CloudBlob) {
+                        CloudBlob blob = (CloudBlob) item;
+                        blob.delete();
+                    }
+                }
+
+                // Create a new host to process events from an Event Hub.
+                eventProcessorHost = new EventProcessorHost(
+                    EventProcessorHost.createHostName(null),
+                    config.getEventHubName(),
+                    "$Default",         // DefaultConsumerGroupName, the name of the consumer group to use when receiving from the Event Hub.
+                    config.getEventHubConnectionString(),
+                    storageConnectionString,
+                    config.getStorageContainerName()
+                );
+
+                CompletableFuture<Void> registerResult = eventProcessorHost
+                    .registerEventProcessorFactory(new MediaServicesEventProcessorFactory(liveEventName), EventProcessorOptions.getDefaultOptions());
+                registerResult.get();
+            }
+            catch (Exception exception)
+            {
+                System.out.println("Failed to connect to Event Hub, please refer README for Event Hub and storage settings. Skipping event monitoring...");
+            }
+
             // When autostart is set to true, the Live Event will be started after creation. 
             // That means, the billing starts as soon as the Live Event starts running. 
             // You must explicitly call Stop on the Live Event resource to halt further billing.
@@ -112,7 +161,8 @@ public class LiveEventWithDVR {
             // Set EncodingType to STANDARD to enable a transcoding LiveEvent, and NONE to enable a pass-through LiveEvent
             System.out.println("Creating the LiveEvent, please be patient this can take time...");
             LiveEvent liveEvent = manager.liveEvents().define(liveEventName)
-                .withExistingMediaservice(config.getResourceGroup(), config.getAccountName()).withAutoStart(true)
+                .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                .withAutoStart(true)
                 .withInput(new LiveEventInput().withStreamingProtocol(LiveEventInputProtocol.RTMP).withAccessControl(liveEventInputAccess))
                 .withEncoding(new LiveEventEncoding().withEncodingType(LiveEventEncodingType.NONE).withPresetName(null))
                 .withLocation(config.getRegion())
@@ -121,7 +171,7 @@ public class LiveEventWithDVR {
                 .withPreview(liveEventPreview)
                 .withStreamOptions(streamOptions)
                 .create();
-          
+
             // Get the input endpoint to configure the on premise encoder with
             String ingestUrl = liveEvent.input().endpoints().get(0).url();
             System.out.println("The ingest url to configure the on premise encoder with is:");
@@ -141,7 +191,10 @@ public class LiveEventWithDVR {
 
             System.out.println("Start the live stream now, sending the input to the ingest url and verify that it is arriving with the preview url.");
             System.out.println("IMPORTANT TIP!: Make ABSOLUTELY CERTAIN that the video is flowing to the Preview URL before continuing!");
-            System.out.println("Press enter to continue...");
+            System.out.println();
+            System.out.println("*********************************");
+            System.out.println("* Press enter to continue...    *");
+            System.out.println("*********************************");
             System.out.flush();
             scanner.nextLine();
             
@@ -164,7 +217,7 @@ public class LiveEventWithDVR {
                 .create();
 
             String manifestName = "output";
-            LiveOutput fullArchiveLiveOutput = manager.liveOutputs().define(fullArchiveLiveOutputName)
+            manager.liveOutputs().define(fullArchiveLiveOutputName)
                 .withExistingLiveEvent(config.getResourceGroup(), config.getAccountName(), liveEventName)
                 // withArchiveWindowLength: Can be set from 3 minutes to 25 hours. content that falls outside of ArchiveWindowLength
                 // is continuously discarded from storage and is non-recoverable. For a full event archive, set to the maximum, 25 hours.
@@ -178,7 +231,7 @@ public class LiveEventWithDVR {
             System.out.println();
             
             List<String> assetFilters = new ArrayList<>();
-            assetFilters.add(drvAssetFilterName);
+            assetFilters.add(drvAssetFilter.name());
             StreamingLocator streamingLocator = manager.streamingLocators().define(dvrStreamingLocatorName)
                 .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
                 .withAssetName(fullArchiveAsset.name())
@@ -206,11 +259,13 @@ public class LiveEventWithDVR {
             System.out.println();
             
             // Print the urls for the LiveEvent.
-            printPaths(config, manager, dvrStreamingLocatorName, streamingEndpoint);
+            printPaths(config, manager, streamingLocator.name(), streamingEndpoint);
 
-            System.out.println("If you see an error in Azure Media Player, wait a few moments and try the url again.");
-            System.out.println("Continue experimenting with the stream until you are ready to finish.");
-            System.out.println("Press ENTER to stop the LiveOutput...");
+            System.out.println("**********************************************************************************");
+            System.out.println("* If you see an error in Azure Media Player, wait a few moments and try again.   *");
+            System.out.println("* Continue experimenting with the stream until you are ready to finish.          *");
+            System.out.println("* Press ENTER to stop the LiveOutput...                                          *");
+            System.out.println("**********************************************************************************");
             System.out.flush();
             scanner.nextLine();
 
@@ -230,18 +285,28 @@ public class LiveEventWithDVR {
             System.out.println();
 
             // Print urls for the full archive.
-            printPaths(config, manager, fullArchiveStreamingLocator, streamingEndpoint);
+            printPaths(config, manager, fullStreamingLocator.name(), streamingEndpoint);
             System.out.println("Press ENTER to finish.");
             System.out.println();
             System.out.flush();
             scanner.nextLine();
 
-        } catch (Exception e) {
+        } 
+        catch (AuthenticationException ae) {
+            //attention
+            System.out.println("TIP: Make sure that you have filled out the appsettings.json file before running this sample.");
+        }
+        catch (Exception e) {
             System.out.println(e);
             e.printStackTrace();
         } finally {
             if (scanner != null) {
                 scanner.close();
+            }
+
+            if (eventProcessorHost != null) {
+                eventProcessorHost.unregisterEventProcessor();
+                eventProcessorHost = null;
             }
         }
     }
@@ -280,6 +345,9 @@ public class LiveEventWithDVR {
             System.out.println("Open the following URL to playback in the Azure Media Player");
             System.out.println("\t https://ampdemo.azureedge.net/?url=" + playerPath + "&heuristicprofile=lowlatency");
             System.out.println();
+        }
+        else {
+            System.out.println("No Streaming Paths were detected.  Has the Stream been started?");
         }
     }
 
