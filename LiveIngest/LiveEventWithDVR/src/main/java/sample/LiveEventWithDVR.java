@@ -45,6 +45,8 @@ import com.microsoft.azure.storage.blob.CloudBlobClient;
 import com.microsoft.azure.storage.blob.CloudBlob;
 import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.rest.LogLevel;
+import com.microsoft.aad.adal4j.AuthenticationException;
+import com.microsoft.azure.management.mediaservices.v2018_07_01.ApiErrorException;
 
 /**
  * Please make sure you have set configuration in resources/conf/appsettings.json
@@ -292,13 +294,23 @@ public class LiveEventWithDVR {
             scanner.nextLine();
 
         } 
-        catch (AuthenticationException ae) {
-            //attention
-            System.out.println("TIP: Make sure that you have filled out the appsettings.json file before running this sample.");
-        }
         catch (Exception e) {
-            System.out.println(e);
+            Throwable cause = e;
+            while (cause != null) {
+                if (cause instanceof AuthenticationException) {
+                    System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
+                    break;
+                }
+                else if (cause instanceof ApiErrorException) {
+                    ApiErrorException apiException = (ApiErrorException) cause;
+                    System.out.println("ERROR: " + apiException.body().error().message());
+                    break;
+                }
+                cause = cause.getCause();
+            }
+            System.out.println();
             e.printStackTrace();
+            System.out.println();
         } finally {
             if (scanner != null) {
                 scanner.close();
