@@ -45,24 +45,24 @@ public class MediaServicesEventProcessor implements IEventProcessor {
     }
 
     // OnOpen is called when a new event processor instance is created by the host. 
-	@Override
+    @Override
     public void onOpen(PartitionContext context) throws Exception
     {
-    	System.out.println("Partition " + context.getPartitionId() + " is opening");
+        System.out.println("Partition " + context.getPartitionId() + " is opening");
     }
 
     // OnClose is called when an event processor instance is being shut down. 
-	@Override
+    @Override
     public void onClose(PartitionContext context, CloseReason reason) throws Exception
     {
         System.out.println("Partition " + context.getPartitionId() + " is closing for reason " + reason.toString());
     }
 
-	// onError is called when an error occurs in EventProcessorHost code that is tied to this partition, such as a receiver failure.
-	@Override
-	public void onError(PartitionContext context, Throwable error)
-	{
-		System.out.println("Partition " + context.getPartitionId() + " onError: " + error.toString());
+    // onError is called when an error occurs in EventProcessorHost code that is tied to this partition, such as a receiver failure.
+    @Override
+    public void onError(PartitionContext context, Throwable error)
+    {
+        System.out.println("Partition " + context.getPartitionId() + " onError: " + error.toString());
     }
     
     // onEvents is called when events are received on this partition of the Event Hub. 
