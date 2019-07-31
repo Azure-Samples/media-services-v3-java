@@ -28,9 +28,9 @@ This sample shows how to create a custom encoding Transform using the StandardEn
 
     `#!/bin/bash`
 
-    `resourceGroup=&lt;your resource group&gt;`\
-    `amsAccountName=&lt;your ams account name&gt;`\
-    `amsSPName=&lt;your AAD application&gt;`
+    `resourceGroup=<your resource group>`\
+    `amsAccountName=<your ams account name>`\
+    `amsSPName=<your AAD application>`
 
     `#Create a service principal with password and configure its access to an Azure Media Services account.`
     `az ams account sp create` \\\
