@@ -35,7 +35,7 @@ To run the sample, you need:
 
 ### Optional, do the following steps if you want to use Event Grid for job monitoring
 
-Please be noted, there are costs for using Event Hub. For more details, refer [Event Hubs pricing](https://azure.microsoft.com/en-in/pricing/details/event-hubs/) and [FAQ](https://docs.microsoft.com/en-us/azure/event-hubs/event-hubs-faq#pricing)
+Please note, there are costs for using Event Hub. For more details, refer [Event Hubs pricing](https://azure.microsoft.com/en-in/pricing/details/event-hubs/) and [FAQ](https://docs.microsoft.com/en-us/azure/event-hubs/event-hubs-faq#pricing)
 
 * Enable Event Grid resource provider
 
