@@ -55,16 +55,16 @@ Please be noted, there are costs for using Event Hub. For more details, refer [E
 
 * Create an Event Hub
 
-  `namespace=&lt;unique-namespace-name&gt;`\
-  `hubname=&lt;event-hub-name&gt;`\
-  `az eventhubs namespace create --name $namespace --resource-group &lt;resource-group&gt;`\
-  `az eventhubs eventhub create --name $hubname --namespace-name $namespace --resource-group &lt;resource-group&gt;`
+  `namespace=<unique-namespace-name>`\
+  `hubname=<event-hub-name>`\
+  `az eventhubs namespace create --name $namespace --resource-group <resource-group>`\
+  `az eventhubs eventhub create --name $hubname --namespace-name $namespace --resource-group <resource-group>`
 
 * Subscribe to Media Services events
 
-  `hubid=$(az eventhubs eventhub show --name $hubname --namespace-name $namespace --resource-group &lt;resource-group&gt; --query id --output tsv)`\
-  `amsResourceId=$(az ams account show --name &lt;ams-account&gt; --resource-group &lt;resource-group&gt; --query id --output tsv)`\
-  `az eventgrid event-subscription create --resource-id $amsResourceId --name &lt;event-subscription-name&gt; --endpoint-type eventhub --endpoint $hubid`
+  `hubid=$(az eventhubs eventhub show --name $hubname --namespace-name $namespace --resource-group <resource-group> --query id --output tsv)`\
+  `amsResourceId=$(az ams account show --name <ams-account> --resource-group <resource-group> --query id --output tsv)`\
+  `az eventgrid event-subscription create --resource-id $amsResourceId --name <event-subscription-name> --endpoint-type eventhub --endpoint $hubid`
 
 * Create a storage account and container for Event Processor Host if you don't have one
   [Create a storage account for Event Processor Host
