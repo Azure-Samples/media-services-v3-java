@@ -114,7 +114,7 @@ public class VideoAndAudioAnalyzer {
                     outputAssetName);
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
-                    VIDEO_ANALYZER_TRANSFORM_NAME, jobName, inputAssetName, outputAsset.name());
+                videoAnalyzerTransform.name(), jobName, inputAssetName, outputAsset.name());
 
             long startedTime = System.currentTimeMillis();
             
@@ -123,7 +123,7 @@ public class VideoAndAudioAnalyzer {
                 // First we will try to process Job events through Event Hub in real-time. If this fails for any reason,
                 // we will fall-back on polling Job status instead.
 
-                System.out.println("Creating a new host to process events from an Event Hub...");
+                System.out.println("Creating a new host to process events from Event Hub...");
 
                 String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
                     config.getStorageAccountName() +
