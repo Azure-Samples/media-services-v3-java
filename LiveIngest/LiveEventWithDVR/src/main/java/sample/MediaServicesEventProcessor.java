@@ -44,28 +44,36 @@ public class MediaServicesEventProcessor implements IEventProcessor {
         this.LIVE_EVENT_NAME = null;
     }
 
-    // OnOpen is called when a new event processor instance is created by the host. 
-	@Override
+    /**
+     * OnOpen is called when a new event processor instance is created by the host. 
+    */
+    @Override
     public void onOpen(PartitionContext context) throws Exception
     {
-    	System.out.println("Partition " + context.getPartitionId() + " is opening");
+        System.out.println("Partition " + context.getPartitionId() + " is opening");
     }
 
-    // OnClose is called when an event processor instance is being shut down. 
-	@Override
+    /** 
+     * OnClose is called when an event processor instance is being shut down.
+    */
+    @Override
     public void onClose(PartitionContext context, CloseReason reason) throws Exception
     {
         System.out.println("Partition " + context.getPartitionId() + " is closing for reason " + reason.toString());
     }
 
-	// onError is called when an error occurs in EventProcessorHost code that is tied to this partition, such as a receiver failure.
-	@Override
-	public void onError(PartitionContext context, Throwable error)
-	{
-		System.out.println("Partition " + context.getPartitionId() + " onError: " + error.toString());
+    /**
+     * onError is called when an error occurs in EventProcessorHost code that is tied to this partition, such as a receiver failure.
+     */
+    @Override
+    public void onError(PartitionContext context, Throwable error)
+    {
+        System.out.println("Partition " + context.getPartitionId() + " onError: " + error.toString());
     }
     
-    // onEvents is called when events are received on this partition of the Event Hub. 
+    /**
+     * onEvents is called when events are received on this partition of the Event Hub. 
+     */
     @Override
     public void onEvents(PartitionContext context, Iterable<EventData> events) throws Exception
     {
@@ -78,6 +86,7 @@ public class MediaServicesEventProcessor implements IEventProcessor {
 
     /**
      * Parse and print Media Services events.
+     * @param context   partition-related information.
      * @param eventData Event Hub event data.
      */
     private void printEvent(PartitionContext context, EventData eventData) {
