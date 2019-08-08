@@ -101,7 +101,7 @@ public class AssetFilters {
                     config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME);
 
             // Create a new input Asset and upload the specified local video file into it.
-            Asset inputAsset = createInputAsset(manager, config.getResourceGroup(), config.getAccountName(), inputAssetName,
+            Asset inputAsset = createInputAssetAndUploadVideo(manager, config.getResourceGroup(), config.getAccountName(), inputAssetName,
                 INPUT_MP4_RESOURCE);
 
             // Output from the encoding Job must be written to an Asset, so let's create one. Note that we
@@ -126,6 +126,17 @@ public class AssetFilters {
                 System.out.println("Job finished.");
                 System.out.println();
 
+                // Now that the content has been encoded, publish it for Streaming by creating
+                // a StreamingLocator. 
+                System.out.println("Creating a streaming locator...\n");
+                StreamingLocator locator = manager.streamingLocators().define(locatorName)
+                    .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                    .withAssetName(outputAssetName)
+                    .withStreamingPolicyName("Predefined_ClearStreamingOnly")
+                    .create();
+
+                List<String> urls = getDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
+
                 // Create an asset filter.
                 // startTimestamp = 100000000 and endTimestamp = 300000000 using the default timescale will generate
                 // a playlist that contains fragments from between 10 seconds and 30 seconds of the VoD presentation.
@@ -143,17 +154,6 @@ public class AssetFilters {
                 System.out.println("Creating an account filter...\n");
                 AccountFilter accountFilter = createAccountFilter(manager, config.getResourceGroup(), config.getAccountName(), accountFilterName);
 
-                // Now that the content has been encoded, publish it for Streaming by creating
-                // a StreamingLocator. 
-                System.out.println("Creating a streaming locator...\n");
-                StreamingLocator locator = manager.streamingLocators().define(locatorName)
-                    .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
-                    .withAssetName(outputAssetName)
-                    .withStreamingPolicyName("Predefined_ClearStreamingOnly")
-                    .create();
-
-                List<String> urls = getDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
-
                 // Print urls with filter.
                 System.out.println("We are going to use two different ways to show how to filter content. First, we will append the filters to the url(s).");
                 System.out.println("Url(s) with filters:");
@@ -167,7 +167,7 @@ public class AssetFilters {
                 }
 
                 System.out.println();
-                System.out.println("Copy and paste the Streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
+                System.out.println("Copy and paste the streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
                 System.out.println("Please note that we have used two filters in the url(s), one trimmed the start and the end of the media");
                 System.out.println("and the other removed high resolution video tracks. To compare and stream the original content,");
                 System.out.println("remove the filters from the url(s) and update player.");
@@ -190,7 +190,7 @@ public class AssetFilters {
                     .create();
 
                 urls = getDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
-                System.out.println("Since we have associated filters with the new streaming locator, Nn need to append filters to the url(s):");
+                System.out.println("Since we have associated filters with the new streaming locator, No need to append filters to the url(s):");
                 for (String url: urls) {
                     System.out.println(url);
                 }
@@ -329,10 +329,21 @@ public class AssetFilters {
      */
     private static Asset createAsset(MediaManager manager, String resourceGroup, String accountName,
             String assetName) {
-        return manager.assets()
-            .define(assetName)
-            .withExistingMediaservice(resourceGroup, accountName)
-            .create();
+        Asset asset;
+        try {
+            asset = manager.assets().getAsync(resourceGroup, accountName, assetName).toBlocking().first();
+        }
+        catch (NoSuchElementException nse) {
+            asset = null;
+        }
+
+        if (asset == null) {
+            asset = manager.assets().define(assetName)
+                .withExistingMediaservice(resourceGroup, accountName)
+                .create();
+        }
+
+        return asset;
     }
 
     /**
@@ -493,7 +504,7 @@ public class AssetFilters {
      * @param mediaFile         The path of a media file to be uploaded into the asset.
      * @return                  The asset.
      */
-    private static Asset createInputAsset(MediaManager manager, String resourceGroupName, String accountName,
+    private static Asset createInputAssetAndUploadVideo(MediaManager manager, String resourceGroupName, String accountName,
             String assetName, String mediaFile) throws Exception {
         Asset asset;
         try {
