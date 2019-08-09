@@ -68,7 +68,7 @@ public class EncodingWithMESPredefinedPreset {
 
     /**
      * Run the sample.
-     * @param config The parm is of type ConfigWrapper. This class reads values from local configuration file.
+     * @param config This param is of type ConfigWrapper. This class reads values from local configuration file.
      */
     private static void runEncodingWithMESPredefinedPreset(ConfigWrapper config) {
         // Connect to media services, please see https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
@@ -114,9 +114,9 @@ public class EncodingWithMESPredefinedPreset {
                     input, outputAsset.name());
 
             long startedTime = System.currentTimeMillis();
-            // In this demo code, we will poll for Job status
+            // In this demo code, we will poll for Job status.
             // Polling is not a recommended best practice for production applications because of the latency it introduces.
-            // Overuse of this API may trigger throttling.
+            // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
             job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME,
                     jobName);
 
@@ -228,12 +228,12 @@ public class EncodingWithMESPredefinedPreset {
     }
 
     /**
-     * Create an asset
+     * Create an asset.
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param assetName     The name of the asset to be created. It is known to be unique.
-     * @return              Teh asset created.
+     * @return              The asset created.
      */
     private static Asset createAsset(MediaManager manager, String resourceGroup, String accountName,
             String assetName) {
@@ -244,7 +244,7 @@ public class EncodingWithMESPredefinedPreset {
     }
 
     /**
-     * 
+     * Create and submit a job.
      * @param manager           The entry point of Azure Media resource management.
      * @param resourceGroup     The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
