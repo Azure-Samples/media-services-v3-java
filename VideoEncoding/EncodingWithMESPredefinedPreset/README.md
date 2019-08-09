@@ -6,7 +6,7 @@ products:
   - azure-media-services
 ---
 
-# Encode files with predefined presets of Media Encoder Standard 
+# Encode files with predefined presets of Media Encoder Standard
 
 This sample shows how to submit a job using a built-in preset and an HTTP URL input, publish output asset for streaming, and download results for verification.
 
@@ -20,11 +20,11 @@ This sample shows how to submit a job using a built-in preset and an HTTP URL in
 
 * Configure `appsettings.json` with appropriate access values.
 
-    Get credentials needed to use Media Services APIs by following [Access APIs](https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to). Open the `src/main/resources/conf/appsettings.json `configuration file and paste the values in the file.
-* Clean and build the project. 
+    Get credentials needed to use Media Services APIs by following [Access APIs](https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to). Open the `src/main/resources/conf/appsettings.json` configuration file and paste the values in the file.
+* Clean and build the project.
 
     Open a terminal window, go to the root folder of this project, run `mvn clean compile`.
-* Run this project. 
+* Run this project.
 
     Execute `mvn exec:java`, then follow the instructions in the output console.
 
@@ -37,7 +37,5 @@ This sample shows how to submit a job using a built-in preset and an HTTP URL in
 
 ## Next steps
 
-- [Azure Media Services pricing](https://azure.microsoft.com/pricing/details/media-services/)
-- [Azure Media Services v3 Documentation](https://docs.microsoft.com/azure/media-services/latest/)
-
-
+* [Azure Media Services pricing](https://azure.microsoft.com/pricing/details/media-services/)
+* [Azure Media Services v3 Documentation](https://docs.microsoft.com/azure/media-services/latest/)
