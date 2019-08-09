@@ -154,7 +154,6 @@ public class AssetFilters {
                 System.out.println("Creating an account filter...\n");
                 AccountFilter accountFilter = createAccountFilter(manager, config.getResourceGroup(), config.getAccountName(), accountFilterName);
 
-                // Print urls with filter.
                 System.out.println("We are going to use two different ways to show how to filter content. First, we will append the filters to the url(s).");
                 System.out.println("Url(s) with filters:");
                 for (String url: urls) {
@@ -168,9 +167,9 @@ public class AssetFilters {
 
                 System.out.println();
                 System.out.println("Copy and paste the streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
-                System.out.println("Please note that we have used two filters in the url(s), one trimmed the start and the end of the media");
-                System.out.println("and the other removed high resolution video tracks. To compare and stream the original content,");
-                System.out.println("remove the filters from the url(s) and update player.");
+                System.out.println("Please note that we have used two filters in the url(s), one trimmed the start and the end of the media ");
+                System.out.println("and the other removed high resolution video tracks. To stream the original content, remove the filters ");
+                System.out.println("from the url(s) and update player.");
                 System.out.println("When finished, press ENTER to continue.");
                 System.out.flush();
                 scanner.nextLine();
@@ -341,6 +340,11 @@ public class AssetFilters {
             asset = manager.assets().define(assetName)
                 .withExistingMediaservice(resourceGroup, accountName)
                 .create();
+        }
+        else {
+            // The asset already exists and we are going to overwrite it. In your application, if you don't want to overwrite
+            // an existing asset, use an unique name.
+            System.out.println("Warning: The asset named " + assetName + "already exists. It will be overwritten.");
         }
 
         return asset;

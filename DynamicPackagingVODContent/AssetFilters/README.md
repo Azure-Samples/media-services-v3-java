@@ -10,15 +10,15 @@ products:
 
 This sample demonstrates how to filter content using asset and account filters. It performs the following tasks:
 
-1. Create an encoding Transform that uses a built-in preset for adaptive bitrate encoding.
-1. Ingest a file.
-1. Submit a job.
-1. Create an asset filter.
-1. Create an Account filter.
-1. Publish output asset for streaming.
-1. Get Dash streaming url(s) and attach filters.
-1. Associate filters to s new streaming locator.
-1. Get Dash streaming url(s).
+1. Creates an encoding Transform that uses a built-in preset for adaptive bitrate encoding.
+1. Ingests a file.
+1. Submits a job.
+1. Creates an asset filter.
+1. Creates an Account filter.
+1. Publishes output asset for streaming.
+1. Gets Dash streaming url(s) with filters.
+1. Associates filters to s new streaming locator.
+1. Gets Dash streaming url(s) for the new locator.
 
 ## Prerequisites
 
