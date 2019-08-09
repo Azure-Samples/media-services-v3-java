@@ -10,10 +10,10 @@ products:
 
 This sample demonstrates how to analyze video and audio in a file. It shows how to perform the following tasks:
 
-1. Create a transform that uses a video analyzer preset.
-1. Upload a video file to an input asset.
-1. Submit an analyzer job.
-1. Download the output asset for verification.
+1. Creates a transform that uses a video analyzer preset.
+1. Uploads a video file to an input asset.
+1. Submits an analyzer job.
+1. Downloads the output asset for verification.
 
 ## Prerequisites
 
