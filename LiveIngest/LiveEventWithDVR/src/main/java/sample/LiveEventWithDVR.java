@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.UUID;
 
@@ -45,14 +46,11 @@ import com.microsoft.azure.storage.blob.CloudBlobClient;
 import com.microsoft.azure.storage.blob.CloudBlob;
 import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.rest.LogLevel;
-import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.ApiErrorException;
 
-/**
- * Please make sure you have set configuration in resources/conf/appsettings.json
- */
 public class LiveEventWithDVR {
     public static void main(String[] args) {
+        // Please make sure you have set configuration in resources/conf/appsettings.json.
         ConfigWrapper config = new ConfigWrapper();
         runLiveEvent(config);
 
@@ -88,6 +86,7 @@ public class LiveEventWithDVR {
         String drvAssetFilterName = "filter-" + uniqueness;
         String streamingEndpointName = "se";  // Change this to your Streaming Endpoint name.
         EventProcessorHost eventProcessorHost = null;
+        boolean stopEndpoint = false;
 
         Scanner scanner = new Scanner(System.in);
 
@@ -154,6 +153,7 @@ public class LiveEventWithDVR {
             catch (Exception exception)
             {
                 System.out.println("Failed to connect to Event Hub, please refer README for Event Hub and storage settings. Skipping event monitoring...");
+                System.out.println(exception.getMessage());
             }
 
             // When autostart is set to true, the Live Event will be started after creation. 
@@ -214,8 +214,8 @@ public class LiveEventWithDVR {
                     .withForceEndTimestamp(false)
                     // 300 seconds sliding window
                     .withPresentationWindowDuration(3000000000L)
-                    // This value defines the latest live position that a client can seek back to 30 seconds, must be smaller than sliding window.
-                    .withLiveBackoffDuration(300000000L))
+                    // This value defines the latest live position that a client can seek back to 10 seconds, must be smaller than sliding window.
+                    .withLiveBackoffDuration(100000000L))
                 .create();
 
             String manifestName = "output";
@@ -226,6 +226,7 @@ public class LiveEventWithDVR {
                 .withArchiveWindowLength(Period.hours(25))
                 .withAssetName(fullArchiveAsset.name())
                 .withManifestName(manifestName)
+                .withDescription("Sample LiveOutput for testing")
                 .create();
 
             // Create the StreamingLocator
@@ -255,6 +256,9 @@ public class LiveEventWithDVR {
                 manager.streamingEndpoints()
                     .startAsync(config.getResourceGroup(), config.getAccountName(), streamingEndpointName)
                     .await();
+                
+                // Since we started the endpoint, we should stop it in cleanup.
+                stopEndpoint = true;
             }
 
             System.out.println("The urls to stream the LiveEvent from a client:");
@@ -271,28 +275,31 @@ public class LiveEventWithDVR {
             System.out.flush();
             scanner.nextLine();
 
-            System.out.println("Stopping the LiveEvent...");
+            System.out.println("Cleaning up LiveEvent and output...");
             CleanupLiveEventAndOutput(manager, config.getResourceGroup(), config.getAccountName(), liveEventName);
             System.out.println("The LiveEvent has ended.");
             System.out.println();
 
-            // Create a StreamingLocator for the full archive.
-            StreamingLocator fullStreamingLocator = manager.streamingLocators().define(fullArchiveStreamingLocator)
-                .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
-                .withAssetName(fullArchiveAsset.name())
-                .withStreamingPolicyName("Predefined_ClearStreamingOnly")
-                .create();
+            // If we started the endpoint, we'll stop it. Otherwise, we'll keep the endpoint running and print urls
+            // that can be played even after this sample ends.
+            if (!stopEndpoint) {
+                // Create a StreamingLocator for the full archive.
+                StreamingLocator fullStreamingLocator = manager.streamingLocators().define(fullArchiveStreamingLocator)
+                    .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                    .withAssetName(fullArchiveAsset.name())
+                    .withStreamingPolicyName("Predefined_ClearStreamingOnly")
+                    .create();
             
-            System.out.println("To playback the full event from a client, Use the following urls:");
-            System.out.println();
+                System.out.println("To playback the full event from a client, Use the following urls:");
+                System.out.println();
 
-            // Print urls for the full archive.
-            printPaths(config, manager, fullStreamingLocator.name(), streamingEndpoint);
-            System.out.println("Press ENTER to finish.");
-            System.out.println();
-            System.out.flush();
-            scanner.nextLine();
-
+                // Print urls for the full archive.
+                printPaths(config, manager, fullStreamingLocator.name(), streamingEndpoint);
+                System.out.println("Press ENTER to finish.");
+                System.out.println();
+                System.out.flush();
+                scanner.nextLine();
+            }
         } 
         catch (Exception e) {
             Throwable cause = e;
@@ -312,6 +319,19 @@ public class LiveEventWithDVR {
             e.printStackTrace();
             System.out.println();
         } finally {
+            CleanupLiveEventAndOutput(manager, config.getResourceGroup(), config.getAccountName(), liveEventName);
+            cleanupLocator(manager, config.getResourceGroup(), config.getAccountName(), dvrStreamingLocatorName);
+
+            if (stopEndpoint) {
+                // Because we started the endpoint, we'll stop it.
+                manager.streamingEndpoints().stopAsync(config.getResourceGroup(), config.getAccountName(), streamingEndpointName).await();
+            }
+            else {
+                // We will keep the endpoint running because it was not started by us. There are costs to keep it running.
+                // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
+                System.out.println("The endpoint " + streamingEndpointName + "is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+            }
+
             if (scanner != null) {
                 scanner.close();
             }
@@ -372,19 +392,35 @@ public class LiveEventWithDVR {
      * @param liveOutputName        The LiveOutput name
      */
     private static void CleanupLiveEventAndOutput(MediaManager manager, String resourceGroup, String accountName, String liveEventName) {
-        // Cleanup LiveOutput first
-        Iterator<LiveOutput> iter = manager.liveOutputs().listAsync(resourceGroup, accountName, liveEventName).toBlocking().getIterator();
-        while (iter.hasNext()) {
-            LiveOutput liveOutput = iter.next();
-            manager.liveOutputs().deleteAsync(resourceGroup, accountName, liveEventName, liveOutput.name()).await();
+        LiveEvent liveEvent;
+        try {
+            liveEvent = manager.liveEvents().getAsync(resourceGroup, accountName, liveEventName).toBlocking().first();
+        }
+        catch (NoSuchElementException e) {
+            liveEvent = null;
+        }
+        if (liveEvent == null) {
+            return;
         }
 
-        LiveEvent liveEvent = manager.liveEvents().getAsync(resourceGroup, accountName, liveEventName).toBlocking().first();
-        if (liveEvent != null) {
-            if (liveEvent.resourceState() == LiveEventResourceState.RUNNING) {
-                manager.liveEvents().stopAsync(resourceGroup, accountName, liveEventName).await();
-            }
-            manager.liveEvents().deleteAsync(resourceGroup, accountName, liveEventName).await();
+        // Cleanup LiveOutput first
+        Iterator<LiveOutput> iter = manager.liveOutputs().listAsync(resourceGroup, accountName, liveEventName).toBlocking().getIterator();
+        iter.forEachRemaining(liveOutput -> manager.liveOutputs().deleteAsync(resourceGroup, accountName, liveEventName, liveOutput.name()).await());
+        
+        if (liveEvent.resourceState() == LiveEventResourceState.RUNNING) {
+            manager.liveEvents().stopAsync(resourceGroup, accountName, liveEventName).await();
+        }
+        manager.liveEvents().deleteAsync(resourceGroup, accountName, liveEventName).await();
+    }
+
+    private static void cleanupLocator(MediaManager manager, String resourceGroup, String accountName, String streamingLocatorName) {
+        try {
+            manager.streamingEndpoints().deleteAsync(resourceGroup, accountName, streamingLocatorName).await();
+        }
+        catch (ApiErrorException e) {
+            System.out.println("cleanupLocator -- Hit ApiErrorException");
+            System.out.println("\tCode: " + e.body().error().code());
+            System.out.println("\tMessage: " + e.body().error().message());
         }
     }
 }
