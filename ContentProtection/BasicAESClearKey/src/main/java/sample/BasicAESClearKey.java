@@ -210,6 +210,7 @@ public class BasicAESClearKey
                 // if Event Grid or Event Hub is not configured, We will fall-back on polling instead.
                 // Polling is not a recommended best practice for production applications because of the latency it introduces.
                 // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
+                System.out.println("Failed to start Event Grid monitoring, will use polling job status instead...");
                 job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
                     transform.name(), jobName);
             }
@@ -542,11 +543,12 @@ public class BasicAESClearKey
     /**
      * Checks if the streaming endpoint is in the running state, if not, starts it.
      * Then, builds the streaming URLs.
-     * @param manager               The entry point of Azure Media resource management
-     * @param resourceGroup         The name of the resource group within the Azure subscription
-     * @param accountName           The Media Services account name
-     * @param locatorName           The name of the StreamingLocator that was created
-     * @return
+     * @param manager               The entry point of Azure Media resource management.
+     * @param resourceGroup         The name of the resource group within the Azure subscription.
+     * @param accountName           The Media Services account name.
+     * @param locatorName           The name of the StreamingLocator that was created.
+     * @param streamingEndpoint     The streaming endpoint.
+     * @return                      DASH url.
      */
     private static String getDASHStreamingUrl(MediaManager manager, String resourceGroup, String accountName,
         String locatorName, StreamingEndpoint streamingEndpoint) {
@@ -576,14 +578,16 @@ public class BasicAESClearKey
      * Deletes the jobs and assets that were created.
      * Generally, you should clean up everything except objects
      * that you are planning to reuse (typically, you will reuse Transforms, and you will persist StreamingLocators).
-     * @param manager               The entry point of Azure Media resource management
-     * @param resourceGroup         The name of the resource group within the Azure subscription
-     * @param accountName           The Media Services account name
-     * @param transformName         The transform name
-     * @param jobName               The job name
-     * @param assetName             The asset name
-     * @param locatorName           The name of the StreamingLocator that was created
-     * @param contentKeyPolicyName
+     * @param manager               The entry point of Azure Media resource management.
+     * @param resourceGroup         The name of the resource group within the Azure subscription.
+     * @param accountName           The Media Services account name.
+     * @param transformName         The transform name.
+     * @param jobName               The job name.
+     * @param assetName             The asset name.
+     * @param locatorName           The name of the StreamingLocator that was created.
+     * @param contentKeyPolicyName  The content key policy name.
+     * @param stopEndpoint          Stop endpoint if true, otherwise keep endpoint running.
+     * @param streamingEndpointName The endpoint name.
      */
     public static void cleanup(MediaManager manager, String resourceGroup, String accountName, String transformName, String jobName,
         String assetName, String locatorName, String contentKeyPolicyName, boolean stopEndpoint, String streamingEndpointName) {
