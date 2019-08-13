@@ -23,11 +23,12 @@ import javax.crypto.SecretKey;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
 import com.microsoft.azure.eventprocessorhost.EventProcessorHost;
 import com.microsoft.azure.eventprocessorhost.EventProcessorOptions;
+import com.microsoft.azure.management.mediaservices.v2018_07_01.ApiErrorException;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.Asset;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.BuiltInStandardEncoderPreset;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicy;
@@ -87,6 +88,8 @@ public class BasicWidevine {
     private static byte[] TOKEN_SIGNING_KEY;
 
     public static void main(String[] args) {
+        // Please make sure you have set configuration in resources/conf/appsettings.json. For more information, see
+        // https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to.
         ConfigWrapper config = new ConfigWrapper();
         runWidevineTest(config);
 
@@ -120,6 +123,7 @@ public class BasicWidevine {
         String outputAssetName = "output-" + uniqueness;
         String locatorName = "locator-" + uniqueness;
         EventProcessorHost eventProcessorHost = null;
+        boolean stopEndpoint = false;
 
         Scanner scanner = new Scanner(System.in);
 
@@ -211,6 +215,7 @@ public class BasicWidevine {
             }
             catch (Exception e)
             {
+                System.out.println("Warning: Failed to connect to Event Hub, please refer README for Event Hub and storage settings.");
                 // if Event Grid or Event Hub is not configured, We will fall-back on polling instead.
                 // Polling is not a recommended best practice for production applications because of the latency it introduces.
                 // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
@@ -255,30 +260,70 @@ public class BasicWidevine {
                 // In order to generate our test token we must get the ContentKeyId to put in the ContentKeyIdentifierClaim claim.
                 String token = createToken(ISSUER, AUDIENCE, keyIdentifier, TOKEN_SIGNING_KEY);
 
-                String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
+                StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
+                    .getAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME)
+                    .toBlocking().first();
+    
+                if (streamingEndpoint != null) {
+                    // Start The Streaming Endpoint if it is not running.
+                    if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
+                        manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME).await();
 
-                System.out.println("Copy and paste the following URL in your browser to play back the file in the Azure Media Player.");
-                System.out.println("You can use Chrome/Firefox for Widevine.");
-                System.out.println();
+                        // We started the endpoint, we should stop it in cleanup.
+                        stopEndpoint = true;
+                    }
+    
+                    String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
 
-                System.out.println("https://ampdemo.azureedge.net/?url=" + dashPath + "&widevine=true&token=Bearer%3D" + token);
-                System.out.println();
+                    System.out.println("Copy and paste the following URL in your browser to play back the file in the Azure Media Player.");
+                    System.out.println("You can use Chrome/Firefox for Widevine.");
+                    System.out.println();
+                    System.out.println("https://ampdemo.azureedge.net/?url=" + dashPath + "&widevine=true&token=Bearer%3D" + token);
+                    System.out.println();
+                }
+                else {
+                    System.out.println("Could not not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
+                }
 
                 System.out.println("When finished testing press ENTER to cleanup.");
                 System.out.flush();
                 scanner.nextLine();
             }
         } catch (Exception e) {
-            System.out.println(e);
+            Throwable cause = e;
+            while (cause != null) {
+                if (cause instanceof AuthenticationException) {
+                    System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
+                    break;
+                }
+                else if (cause instanceof ApiErrorException) {
+                    ApiErrorException apiException = (ApiErrorException) cause;
+                    System.out.println("ERROR: " + apiException.body().error().message());
+                    break;
+                }
+                cause = cause.getCause();
+            }
+            System.out.println();
             e.printStackTrace();
+            System.out.println();
         } finally {
             System.out.println("Cleaning up...");
+
+            cleanup(manager, config.getResourceGroup(), config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName,
+                outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME, stopEndpoint, DEFAULT_STREAMING_ENDPOINT_NAME);
+            
             if (scanner != null) {
                 scanner.close();
             }
 
-            cleanup(manager, config.getResourceGroup(), config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName,
-                outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME);
+            if (eventProcessorHost != null)
+            {
+                System.out.println("Unregistering event processor...");
+
+                // Disposes of the Event Processor Host.
+                eventProcessorHost.unregisterEventProcessor();
+                System.out.println();
+            }
         }
     }
 
@@ -587,18 +632,9 @@ public class BasicWidevine {
      * @param locatorName           The name of the StreamingLocator that was created
      * @return                      The DASH streaming url.
      */
-    private static String getDASHStreamingUrl(MediaManager manager, String resourceGroup, String accountName, String locatorName) {
+    private static String getDASHStreamingUrl(MediaManager manager, String resourceGroup, String accountName,
+        String locatorName, StreamingEndpoint streamingEndpoint) {
         String dashPath = "";
-
-        StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-            .getAsync(resourceGroup, accountName, DEFAULT_STREAMING_ENDPOINT_NAME)
-            .toBlocking().first();
-
-        if (streamingEndpoint != null) {
-            if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
-                manager.streamingEndpoints().startAsync(resourceGroup, accountName, DEFAULT_STREAMING_ENDPOINT_NAME).await();
-            }
-        }
 
         ListPathsResponse paths = manager.streamingLocators()
             .listPathsAsync(resourceGroup, accountName, locatorName)
@@ -632,10 +668,12 @@ public class BasicWidevine {
      * @param jobName               The job name.
      * @param assetName             The asset name.
      * @param locatorName           The name of the StreamingLocator that was created.
-     * @param contentKeyPolicyName
+     * @param contentKeyPolicyName  The content key policy name.
+     * @param stopEndpoint          Stop endpoint if true, otherwise keep endpoint running.
+     * @param streamingEndpointName The endpoint name.
      */
     public static void cleanup(MediaManager manager, String resourceGroup, String accountName, String transformName, String jobName,
-        String assetName, String locatorName, String contentKeyPolicyName) {
+        String assetName, String locatorName, String contentKeyPolicyName, boolean stopEndpoint, String streamingEndpointName) {
         if (manager == null) {
             return;
         }
@@ -645,5 +683,15 @@ public class BasicWidevine {
 
         manager.streamingLocators().deleteAsync(resourceGroup, accountName, locatorName).await();
         manager.contentKeyPolicies().deleteAsync(resourceGroup, accountName, contentKeyPolicyName).await();
+
+        if (stopEndpoint) {
+            // Because we started the endpoint, we'll stop it.
+            manager.streamingEndpoints().stopAsync(resourceGroup, accountName, streamingEndpointName).await();
+        }
+        else {
+            // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
+            // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
+            System.out.println("The endpoint ''" + streamingEndpointName + "'' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+        }
     }
 }
