@@ -56,9 +56,9 @@ public class AssetFilters {
     // Please change this to your endpoint name
     private static final String STREAMING_ENDPOINT_NAME = "se";
 
-
-    // Please make sure you have set configurations in resources/conf/appsettings.json
     public static void main(String[] args) {
+        // Please make sure you have set configuration in resources/conf/appsettings.json. For more information, see
+        // https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to.
         ConfigWrapper config = new ConfigWrapper();
         runAssetFiltersSample(config);
 
@@ -92,6 +92,7 @@ public class AssetFilters {
         String assetFilterName = "assetFilter-" + uniqueness;
         String accountFilterName = "accountFilter-" + uniqueness;
         String inputAssetName = "input-" + uniqueness;
+        boolean stopEndpoint = false;
 
         Scanner scanner = new Scanner(System.in);
         try {
@@ -135,7 +136,21 @@ public class AssetFilters {
                     .withStreamingPolicyName("Predefined_ClearStreamingOnly")
                     .create();
 
-                List<String> urls = getDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
+                StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
+                    .getAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME)
+                    .toBlocking().first();
+
+                if (streamingEndpoint != null) {
+                    // Start The Streaming Endpoint if it is not running.
+                    if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
+                        manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME).await();
+
+                        // We started the endpoint, we should stop it in cleanup.
+                        stopEndpoint = true;
+                    }
+                }
+
+                List<String> urls = getDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
 
                 // Create an asset filter.
                 // startTimestamp = 100000000 and endTimestamp = 300000000 using the default timescale will generate
@@ -188,7 +203,7 @@ public class AssetFilters {
                     .withFilters(filters)           // Associate filters
                     .create();
 
-                urls = getDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
+                urls = getDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
                 System.out.println("Since we have associated filters with the new streaming locator, No need to append filters to the url(s):");
                 for (String url: urls) {
                     System.out.println(url);
@@ -226,7 +241,7 @@ public class AssetFilters {
                 scanner.close();
             }
             cleanup(manager, config.getResourceGroup(), config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName,
-                inputAssetName, outputAssetName, accountFilterName, locatorName);
+                inputAssetName, outputAssetName, accountFilterName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
                 System.out.println("Done.");
         }
     }
@@ -439,21 +454,12 @@ public class AssetFilters {
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param locatorName   The name of the StreamingLocator that was created.
+     * @param streamingEndpoint The streaming endpoint.
      * @return              List of streaming urls.
      */
     private static List<String> getDashStreamingUrls(MediaManager manager, String resourceGroup, String accountName,
-        String locatorName) {
+        String locatorName, StreamingEndpoint streamingEndpoint) {
         List<String> streamingUrls = new ArrayList<>();
-
-        StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-            .getAsync(resourceGroup, accountName, STREAMING_ENDPOINT_NAME)
-            .toBlocking().first();
-
-        if (streamingEndpoint != null) {
-            if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
-                manager.streamingEndpoints().startAsync(resourceGroup, accountName, STREAMING_ENDPOINT_NAME).await();
-            }
-        }
 
         ListPathsResponse paths = manager.streamingLocators().listPathsAsync(resourceGroup, accountName, locatorName)
             .toBlocking().first();
@@ -483,9 +489,12 @@ public class AssetFilters {
      * @param outputAssetName       The output asset name.
      * @param accountFilterName     The AccountFilter name.
      * @param streamingLocatorName  The streaming locator name.
+     * @param stopEndpoint          Stop endpoint if true, otherwise keep endpoint running.
+     * @param streamingEndpointName The endpoint name.
      */
     private static void cleanup(MediaManager manager, String resourceGroupName, String accountName, String transformName, String jobName,
-        String inputAssetName, String outputAssetName, String accountFilterName, String streamingLocatorName) {
+        String inputAssetName, String outputAssetName, String accountFilterName, String streamingLocatorName, boolean stopEndpoint,
+        String streamingEndpointName) {
         if (manager == null) {
             return;
         }
@@ -494,8 +503,17 @@ public class AssetFilters {
         manager.assets().deleteAsync(resourceGroupName, accountName, inputAssetName).await();
         manager.assets().deleteAsync(resourceGroupName, accountName, outputAssetName).await();
         manager.accountFilters().deleteAsync(resourceGroupName, accountName, accountFilterName).await();
-
         manager.streamingLocators().deleteAsync(resourceGroupName, accountName, streamingLocatorName).await();
+
+        if (stopEndpoint) {
+            // Because we started the endpoint, we'll stop it.
+            manager.streamingEndpoints().stopAsync(resourceGroupName, accountName, streamingEndpointName).await();
+        }
+        else {
+            // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
+            // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
+            System.out.println("The endpoint '" + streamingEndpointName + "' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+        }
     }
 
     /**
@@ -554,6 +572,7 @@ public class AssetFilters {
         CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
 
         // Use Storage API to upload the file into the container in storage.
+        System.out.println("Uploading a media file to the asset...");
         blob.uploadFromFile(fileToUpload);
 
         return asset;
