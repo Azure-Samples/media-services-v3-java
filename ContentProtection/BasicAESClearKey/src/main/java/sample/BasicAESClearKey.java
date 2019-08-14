@@ -137,7 +137,7 @@ public class BasicAESClearKey
                 // we will fall-back on polling Job status instead.
 
                 System.out.println();
-                System.out.println("Creating a new host to process events from Event Hub...");
+                System.out.println("Creating an event processor host to process events from Event Hub...");
 
                 String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
                     config.getStorageAccountName() +
@@ -230,6 +230,7 @@ public class BasicAESClearKey
                 ContentKeyPolicy policy = ensureContentKeyPolicyExists(manager, config.getResourceGroup(),
                     config.getAccountName(), CONTENT_KEY_POLICY_NAME);
                 
+                System.out.println("Creating a streaming locator...");
                 StreamingLocator locator = manager.streamingLocators().define(locatorName)
                     .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
                     .withAssetName(outputAsset.name())
@@ -253,6 +254,7 @@ public class BasicAESClearKey
                 if (streamingEndpoint != null) {
                     // Start The Streaming Endpoint if it is not running.
                     if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
+                        System.out.println("Endpoint was stopped, restarting it...");
                         manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(),
                             DEFAULT_STREAMING_ENDPOINT_NAME).await();
                     
@@ -270,7 +272,7 @@ public class BasicAESClearKey
                     System.out.println();
                 }
                 else {
-                    System.out.println("Could not not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
+                    System.out.println("Could not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
                 }
             }
 
@@ -347,6 +349,7 @@ public class BasicAESClearKey
             outputs.add(transformOutput);
 
             // Create the Transform with the output defined above
+            System.out.println("Creating a transform...");
             transform = manager.transforms().define(transformName).withExistingMediaservice(resourceGroup, accountName)
                     .withOutputs(outputs).create();
         }
@@ -376,6 +379,7 @@ public class BasicAESClearKey
         */
 
         // We are assuming the asset name is unique.
+        System.out.println("Creating an output asset...");
         Asset outputAsset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
                 .create();
 
@@ -412,6 +416,7 @@ public class BasicAESClearKey
         // If you already have a job with the desired name, use the Jobs.Get method
         // to get the existing job. In Media Services v3, the Get method on entities returns null 
         // if the entity doesn't exist (a case-insensitive check on the name).
+        System.out.println("Creating a job...");
         Job job = manager.jobs().define(jobName).withExistingTransform(resourceGroupName, accountName, transformName)
                 .withInput(jobInput).withOutputs(jobOutputs).create();
 
@@ -502,6 +507,7 @@ public class BasicAESClearKey
             // Since we are randomly generating the signing key each time, make sure to create or update the policy each time.
             // Normally you would use a long lived key so you would just check for the policies existence with Get instead of
             // ensuring to create it each time.
+            System.out.println("Creating a content key policy...");
             policy = manager.contentKeyPolicies().define(contentKeyPolicyName)
                 .withExistingMediaservice(resourceGroup, accountName)
                 .withOptions(options)
@@ -608,7 +614,7 @@ public class BasicAESClearKey
         else {
             // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
             // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
-            System.out.println("The endpoint ''" + streamingEndpointName + "'' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+            System.out.println("The endpoint '" + streamingEndpointName + "' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
         }
     }
 }
