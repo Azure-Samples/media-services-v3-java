@@ -49,9 +49,9 @@ public class StreamHLSAndDASH {
     // Please change this to your endpoint name
     private static final String STREAMING_ENDPOINT_NAME = "se";
 
-
-    // Please make sure you have set configurations in resources/conf/appsettings.json
     public static void main(String[] args) {
+        // Please make sure you have set configuration in resources/conf/appsettings.json. For more information, see
+        // https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to.
         ConfigWrapper config = new ConfigWrapper();
         runStreamHlsAndDash(config);
 
@@ -83,6 +83,7 @@ public class StreamHLSAndDASH {
         String locatorName = "locator-" + uniqueness;
         String outputAssetName = "output-" + uniqueness;
         String inputAssetName = "input-" + uniqueness;
+        boolean stopEndpoint = false;
 
         Scanner scanner = new Scanner(System.in);
         try {
@@ -97,6 +98,7 @@ public class StreamHLSAndDASH {
 
             // Output from the encoding Job must be written to an Asset, so let's create one. Note that we
             // are using a unique asset name, there should not be a name collision.
+            System.out.println("Creating an output asset...");
             Asset outputAsset = createAsset(manager, config.getResourceGroup(), config.getAccountName(),
                     outputAssetName);
 
@@ -122,15 +124,33 @@ public class StreamHLSAndDASH {
                 StreamingLocator locator = getStreamingLocator(manager, config.getResourceGroup(), config.getAccountName(),
                     outputAsset.name(), locatorName);
 
-                List<String> urls = getHlsAndDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
-                System.out.println();
-                for (String url: urls) {
-                    System.out.println(url);
-                }
-                System.out.println();
+                StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
+                    .getAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME)
+                    .toBlocking().first();
 
-                System.out.println();
-                System.out.println("Done. Copy and paste the Streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
+                if (streamingEndpoint != null) {
+                    // Start The Streaming Endpoint if it is not running.
+                    if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
+                        manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME).await();
+
+                        // We started the endpoint, we should stop it in cleanup.
+                        stopEndpoint = true;
+                    }
+
+                    List<String> urls = getHlsAndDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
+                    System.out.println();
+                    for (String url: urls) {
+                        System.out.println(url);
+                    }
+                    System.out.println();
+
+                    System.out.println();
+                    System.out.println("Copy and paste the Streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
+                }
+                else {
+                    System.out.println("Could not find streaming endpoint: " + STREAMING_ENDPOINT_NAME);
+                }
+
                 System.out.println("When finished, press ENTER to continue.");
                 System.out.flush();
                 scanner.nextLine();
@@ -161,9 +181,9 @@ public class StreamHLSAndDASH {
             if (scanner != null) {
                 scanner.close();
             }
-            cleanup(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME, jobName,
-                outputAssetName, locatorName);
-                System.out.println("Done.");
+            cleanup(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME, jobName, inputAssetName,
+                outputAssetName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
+            System.out.println("Done.");
         }
     }
 
@@ -201,6 +221,7 @@ public class StreamHLSAndDASH {
             outputs.add(new TransformOutput().withPreset(new BuiltInStandardEncoderPreset().withPresetName(EncoderNamedPreset.ADAPTIVE_STREAMING)));
 
             // Create the transform.
+            System.out.println("Creating a transform...");
             transform = manager.transforms()
                 .define(transformName)
                 .withExistingMediaservice(resourceGroup, accountName)
@@ -340,22 +361,12 @@ public class StreamHLSAndDASH {
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param locatorName   The name of the StreamingLocator that was created.
+     * @param streamingEndpoint     The streaming endpoint.
      * @return              List of streaming urls.
      */
     private static List<String> getHlsAndDashStreamingUrls(MediaManager manager, String resourceGroup, String accountName,
-        String locatorName) {
+        String locatorName, StreamingEndpoint streamingEndpoint) {
         List<String> streamingUrls = new ArrayList<>();
-
-        StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-            .getAsync(resourceGroup, accountName, STREAMING_ENDPOINT_NAME)
-            .toBlocking().first();
-
-        if (streamingEndpoint != null) {
-            if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
-                manager.streamingEndpoints().startAsync(resourceGroup, accountName, STREAMING_ENDPOINT_NAME).await();
-            }
-        }
-
         ListPathsResponse paths = manager.streamingLocators().listPathsAsync(resourceGroup, accountName, locatorName)
             .toBlocking().first();
         
@@ -383,19 +394,31 @@ public class StreamHLSAndDASH {
      * @param accountName           The Media Services account name.
      * @param transformName         The transform name.
      * @param jobName               The job name.
-     * @param assetName             The asset name.
+     * @param inputAssetName        The input asset name.
+     * @param outputAssetName       The output asset name.
      * @param streamingLocatorName  The streaming locator name.
+     * @param stopEndpoint          Stop endpoint if true, otherwise keep endpoint running.
+     * @param streamingEndpointName The endpoint name.
      */
     private static void cleanup(MediaManager manager, String resourceGroupName, String accountName, String transformName, String jobName,
-        String assetName, String streamingLocatorName) {
+        String inputAssetName, String outputAssetName, String streamingLocatorName, boolean stopEndpoint, String streamingEndpointName) {
         if (manager == null) {
             return;
         }
 
         manager.jobs().deleteAsync(resourceGroupName, accountName, transformName, jobName).await();
-        manager.assets().deleteAsync(resourceGroupName, accountName, assetName).await();
-
+        manager.assets().deleteAsync(resourceGroupName, accountName, inputAssetName).await();
+        manager.assets().deleteAsync(resourceGroupName, accountName, outputAssetName).await();
         manager.streamingLocators().deleteAsync(resourceGroupName, accountName, streamingLocatorName).await();
+        if (stopEndpoint) {
+            // Because we started the endpoint, we'll stop it.
+            manager.streamingEndpoints().stopAsync(resourceGroupName, accountName, streamingEndpointName).await();
+        }
+        else {
+            // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
+            // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
+            System.out.println("The endpoint '" + streamingEndpointName + "' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+        }
     }
 
     /**
@@ -454,6 +477,7 @@ public class StreamHLSAndDASH {
         CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
 
         // Use Storage API to upload the file into the container in storage.
+        System.out.println("Uploading a media file to the asset...");
         blob.uploadFromFile(fileToUpload);
 
         return asset;
