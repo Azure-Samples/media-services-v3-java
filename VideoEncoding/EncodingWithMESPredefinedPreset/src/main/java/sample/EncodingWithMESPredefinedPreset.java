@@ -182,7 +182,7 @@ public class EncodingWithMESPredefinedPreset {
                     System.out.println("Done downloading. Please check the files at " + outputFolder.getAbsolutePath());
                 }
                 else {
-                    System.out.println("Could not not find streaming endpoint: " + STREAMING_ENDPOINT_NAME);
+                    System.out.println("Could not find streaming endpoint: " + STREAMING_ENDPOINT_NAME);
                 }
 
                 System.out.println("When finished, press ENTER to cleanup.");
