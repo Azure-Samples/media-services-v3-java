@@ -236,6 +236,7 @@ public class BasicWidevine {
                 // We are using the ContentKeyIdentifierClaim in the ContentKeyPolicy which
                 // means that the token presented to the Key Delivery Component must have
                 // the identifier of the content key in it.
+                System.out.println("Creating a content key policy...");
                 ContentKeyPolicy policy = ensureContentKeyPolicyExists(manager, config.getResourceGroup(),
                     config.getAccountName(), CONTENT_KEY_POLICY_NAME);
 
@@ -267,6 +268,7 @@ public class BasicWidevine {
                 if (streamingEndpoint != null) {
                     // Start The Streaming Endpoint if it is not running.
                     if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
+                        System.out.println("Streaming endpoint was stopped, restarting it...");
                         manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME).await();
 
                         // We started the endpoint, we should stop it in cleanup.
@@ -282,7 +284,7 @@ public class BasicWidevine {
                     System.out.println();
                 }
                 else {
-                    System.out.println("Could not not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
+                    System.out.println("Could not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
                 }
 
                 System.out.println("When finished testing press ENTER to cleanup.");
@@ -358,6 +360,7 @@ public class BasicWidevine {
             outputs.add(transformOutput);
 
             // Create the Transform with the output defined above.
+            System.out.println("Creating a transform...");
             transform = manager.transforms().define(transformName).withExistingMediaservice(resourceGroup, accountName)
                     .withOutputs(outputs).create();
         }
@@ -377,7 +380,8 @@ public class BasicWidevine {
      */
     private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
             String assetName) {
-         // We are assuming the asset name is unique.
+        // We are assuming the asset name is unique.
+        System.out.println("Creating an output asset...");
         Asset outputAsset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
                 .create();
 
@@ -414,6 +418,7 @@ public class BasicWidevine {
         // If you already have a job with the desired name, use the Jobs.Get method
         // to get the existing job. In Media Services v3, the Get method on entities returns null
         // if the entity doesn't exist (a case-insensitive check on the name).
+        System.out.println("Creating a job...");
         Job job = manager.jobs().define(jobName).withExistingTransform(resourceGroupName, accountName, transformName)
                 .withInput(jobInput).withOutputs(jobOutputs).create();
 
