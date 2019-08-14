@@ -149,7 +149,7 @@ public class BasicPlayReady {
                 // we will fall-back on polling Job status instead.
 
                 System.out.println();
-                System.out.println("Creating a new host to process events from Event Hub...");
+                System.out.println("Creating an event processor host to process events from Event Hub...");
 
                 String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
                     config.getStorageAccountName() +
@@ -280,6 +280,7 @@ public class BasicPlayReady {
 
                     String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
 
+                    System.out.println();
                     System.out.println("Copy and paste the following URL in your browser to play back the file in the Azure Media Player.");
                     System.out.println("You can use Edge/IE11 for PlayReady.");
                     System.out.println();
@@ -288,10 +289,10 @@ public class BasicPlayReady {
                     System.out.println();
                 }
                 else {
-                    System.out.println("Could not not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
+                    System.out.println("Could not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
                 }
 
-                System.out.println("When finished testing press enter to cleanup.");
+                System.out.println("When finished testing press ENTER to cleanup.");
                 System.out.flush();
                 scanner.nextLine();
             }
@@ -345,6 +346,7 @@ public class BasicPlayReady {
             outputs.add(transformOutput);
 
             // Create the Transform with the output defined above.
+            System.out.println("Creating a transform...");
             transform = manager.transforms().define(transformName).withExistingMediaservice(resourceGroup, accountName)
                     .withOutputs(outputs).create();
         }
@@ -364,7 +366,8 @@ public class BasicPlayReady {
      */
     private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
             String assetName) {
-         // We are assuming the asset name is unique.
+        // We are assuming the asset name is unique.
+        System.out.println("Creating an output asset...");
         Asset outputAsset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
                 .create();
 
@@ -401,6 +404,7 @@ public class BasicPlayReady {
         // If you already have a job with the desired name, use the Jobs.Get method
         // to get the existing job. In Media Services v3, the Get method on entities returns null
         // if the entity doesn't exist (a case-insensitive check on the name).
+        System.out.println("Creating a job...");
         Job job = manager.jobs().define(jobName).withExistingTransform(resourceGroupName, accountName, transformName)
                 .withInput(jobInput).withOutputs(jobOutputs).create();
 
