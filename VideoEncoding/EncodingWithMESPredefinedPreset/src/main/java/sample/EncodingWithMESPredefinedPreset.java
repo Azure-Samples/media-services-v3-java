@@ -14,8 +14,10 @@ import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.UUID;
 
+import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
+import com.microsoft.azure.management.mediaservices.v2018_07_01.ApiErrorException;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.Asset;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.AssetContainerPermission;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.AssetContainerSas;
@@ -56,9 +58,9 @@ public class EncodingWithMESPredefinedPreset {
     // Please change this to your endpoint name
     private static final String STREAMING_ENDPOINT_NAME = "se";
 
-
-    // Please make sure you have set configurations in resources/conf/appsettings.json
     public static void main(String[] args) {
+        // Please make sure you have set configuration in resources/conf/appsettings.json. For more information, see
+        // https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to.
         ConfigWrapper config = new ConfigWrapper();
         runEncodingWithMESPredefinedPreset(config);
 
@@ -89,6 +91,7 @@ public class EncodingWithMESPredefinedPreset {
         String jobName = "job-" + uniqueness.substring(0, 13);
         String locatorName = "locator-" + uniqueness;
         String outputAssetName = "output-" + uniqueness;
+        boolean stopEndpoint = false;
 
         Scanner scanner = new Scanner(System.in);
         try {
@@ -107,17 +110,18 @@ public class EncodingWithMESPredefinedPreset {
 
             // Output from the encoding Job must be written to an Asset, so let's create one. Note that we
             // are using a unique asset name, there should not be a name collision.
+            System.out.println("Creating an output asset...");
             Asset outputAsset = createAsset(manager, config.getResourceGroup(), config.getAccountName(),
                     outputAssetName);
 
-            Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME, jobName,
+            Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(), adaptiveEncodeTransform.name(), jobName,
                     input, outputAsset.name());
 
             long startedTime = System.currentTimeMillis();
             // In this demo code, we will poll for Job status.
             // Polling is not a recommended best practice for production applications because of the latency it introduces.
             // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
-            job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME,
+            job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(), adaptiveEncodeTransform.name(),
                     jobName);
 
             long elapsed = (System.currentTimeMillis() - startedTime) / 1000; // Elapsed time in seconds
@@ -132,34 +136,55 @@ public class EncodingWithMESPredefinedPreset {
                 StreamingLocator locator = getStreamingLocator(manager, config.getResourceGroup(), config.getAccountName(),
                     outputAsset.name(), locatorName);
 
-                List<String> urls = getStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
+                StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
+                    .getAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME)
+                    .toBlocking().first();
+        
+                if (streamingEndpoint != null) {
+                    // Start The Streaming Endpoint if it is not running.
+                    if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
+                        System.out.println("Streaming endpoint was stopped, restarting it...");
+                        manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME).await();
 
-                for (String url: urls) {
-                    System.out.println(url);
+                        // We started the endpoint, we should stop it in cleanup.
+                        stopEndpoint = true;
+                    }
+
                     System.out.println();
-                }
-                
-                System.out.println("To try streaming, copy and paste the Streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
-                System.out.println("When finished, press ENTER to continue.");
-                System.out.println();
-                System.out.flush();
-                scanner.nextLine();
+                    System.out.println("Streaming urls:");
+                    List<String> urls = getStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
 
-                // Download output asset for verification.
-                System.out.println("Downloading output asset...");
-                System.out.println();
-                File outputFolder = new File(OUTPUT_FOLDER);
-                if (outputFolder.exists() && !outputFolder.isDirectory()) {
-                    outputFolder = new File(OUTPUT_FOLDER + uniqueness);
+                    for (String url: urls) {
+                        System.out.println("\t" + url);
+                    }
+                
+                    System.out.println();
+                    System.out.println("To stream, copy and paste the Streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
+                    System.out.println("When finished, press ENTER to continue.");
+                    System.out.println();
+                    System.out.flush();
+                    scanner.nextLine();
+
+                    // Download output asset for verification.
+                    System.out.println("Downloading output asset...");
+                    System.out.println();
+                    File outputFolder = new File(OUTPUT_FOLDER);
+                    if (outputFolder.exists() && !outputFolder.isDirectory()) {
+                        outputFolder = new File(OUTPUT_FOLDER + uniqueness);
+                    }
+                    if (!outputFolder.exists()) {
+                        outputFolder.mkdir();
+                    }
+
+                    downloadResults(manager, config.getResourceGroup(), config.getAccountName(), outputAsset.name(),
+                        outputFolder);
+                
+                    System.out.println("Done downloading. Please check the files at " + outputFolder.getAbsolutePath());
                 }
-                if (!outputFolder.exists()) {
-                    outputFolder.mkdir();
+                else {
+                    System.out.println("Could not not find streaming endpoint: " + STREAMING_ENDPOINT_NAME);
                 }
 
-                downloadResults(manager, config.getResourceGroup(), config.getAccountName(), outputAsset.name(),
-                    outputFolder);
-                
-                System.out.println("Done downloading. Please check the files at " + outputFolder.getAbsolutePath());
                 System.out.println("When finished, press ENTER to cleanup.");
                 System.out.println();
                 System.out.flush();
@@ -170,15 +195,29 @@ public class EncodingWithMESPredefinedPreset {
                         + job.outputs().get(0).error().details().get(0).message());
             }
         } catch (Exception e) {
-            System.out.println(e);
+            Throwable cause = e;
+            while (cause != null) {
+                if (cause instanceof AuthenticationException) {
+                    System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
+                    break;
+                }
+                else if (cause instanceof ApiErrorException) {
+                    ApiErrorException apiException = (ApiErrorException) cause;
+                    System.out.println("ERROR: " + apiException.body().error().message());
+                    break;
+                }
+                cause = cause.getCause();
+            }
+            System.out.println();
             e.printStackTrace();
+            System.out.println();
         } finally {
             System.out.println("Cleaning up...");
             if (scanner != null) {
                 scanner.close();
             }
             cleanup(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME, jobName,
-                outputAssetName, locatorName);
+                outputAssetName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
                 System.out.println("Done.");
         }
     }
@@ -255,7 +294,8 @@ public class EncodingWithMESPredefinedPreset {
      * @return                  The job created.
      */
     private static Job submitJob(MediaManager manager, String resourceGroup, String accountName, String transformName,
-            String jobName, JobInput jobInput, String outputAssetName) {
+        String jobName, JobInput jobInput, String outputAssetName) {
+        System.out.println("Creating a job...");
         // First specify where the output(s) of the Job need to be written to
         List<JobOutput> jobOutputs = new ArrayList<>();
         jobOutputs.add(new JobOutputAsset().withAssetName(outputAssetName));
@@ -369,6 +409,7 @@ public class EncodingWithMESPredefinedPreset {
         String assetName, String locatorName) {
         // Note that we are using one of the PredefinedStreamingPolicies which tell the Origin component
         // of Azure Media Services how to publish the content for streaming.
+        System.out.println("Creating a streaming locator...");
         StreamingLocator locator = manager
             .streamingLocators().define(locatorName)
             .withExistingMediaservice(resourceGroup, accountName)
@@ -385,21 +426,12 @@ public class EncodingWithMESPredefinedPreset {
      * @param resourceGroup The name of the resource group within the Azure subscription
      * @param accountName   The Media Services account name
      * @param locatorName   The name of the StreamingLocator that was created
+     * @param streamingEndpoint     The streaming endpoint.
      * @return              List of streaming urls
      */
     private static List<String> getStreamingUrls(MediaManager manager, String resourceGroup, String accountName,
-        String locatorName) {
+        String locatorName, StreamingEndpoint streamingEndpoint) {
         List<String> streamingUrls = new ArrayList<>();
-
-        StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-            .getAsync(resourceGroup, accountName, STREAMING_ENDPOINT_NAME)
-            .toBlocking().first();
-
-        if (streamingEndpoint != null) {
-            if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
-                manager.streamingEndpoints().startAsync(resourceGroup, accountName, STREAMING_ENDPOINT_NAME).await();
-            }
-        }
 
         ListPathsResponse paths = manager.streamingLocators().listPathsAsync(resourceGroup, accountName, locatorName)
             .toBlocking().first();
@@ -425,9 +457,11 @@ public class EncodingWithMESPredefinedPreset {
      * @param jobName               The job name.
      * @param assetName             The asset name.
      * @param streamingLocatorName  The streaming locator name.
+     * @param stopEndpoint          Stop endpoint if true, otherwise keep endpoint running.
+     * @param streamingEndpointName The endpoint name.
      */
     private static void cleanup(MediaManager manager, String resourceGroupName, String accountName, String transformName, String jobName,
-        String assetName, String streamingLocatorName) {
+        String assetName, String streamingLocatorName, boolean stopEndpoint, String streamingEndpointName) {
         if (manager == null) {
             return;
         }
@@ -436,6 +470,16 @@ public class EncodingWithMESPredefinedPreset {
         manager.assets().deleteAsync(resourceGroupName, accountName, assetName).await();
 
         manager.streamingLocators().deleteAsync(resourceGroupName, accountName, streamingLocatorName).await();
+
+        if (stopEndpoint) {
+            // Because we started the endpoint, we'll stop it.
+            manager.streamingEndpoints().stopAsync(resourceGroupName, accountName, streamingEndpointName).await();
+        }
+        else {
+            // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
+            // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
+            System.out.println("The endpoint '" + streamingEndpointName + "' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+        }
     }
 }
 
