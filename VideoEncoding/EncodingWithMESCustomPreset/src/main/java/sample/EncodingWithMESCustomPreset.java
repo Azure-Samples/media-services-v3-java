@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 
+import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.AacAudio;
@@ -102,6 +103,7 @@ public class EncodingWithMESCustomPreset {
         String locatorName = "locator-" + uniqueness;
         String outputAssetName = "output-" + uniqueness;
         String inputAssetName = "input-" + uniqueness;
+        boolean stopEndpoint = false;
 
         Scanner scanner = new Scanner(System.in);
 
@@ -145,7 +147,21 @@ public class EncodingWithMESCustomPreset {
 
                 StreamingLocator locator = createStreamingLocator(manager, config.getResourceGroup(), config.getAccountName(), outputAsset.name(), locatorName);
 
-                List<String> urls = getStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
+                StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
+                    .getAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME)
+                    .toBlocking().first();
+    
+                if (streamingEndpoint != null) {
+                    // Start The Streaming Endpoint if it is not running.
+                    if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
+                        manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME).await();
+
+                        // We started the endpoint, we should stop it in cleanup.
+                        stopEndpoint = true;
+                    }
+                }
+
+                List<String> urls = getStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
 
                 System.out.println();
                 System.out.println("Streaming urls:");
@@ -160,8 +176,22 @@ public class EncodingWithMESCustomPreset {
             System.out.flush();
             scanner.nextLine();
         } catch (Exception e) {
-            System.out.println(e);
+            Throwable cause = e;
+            while (cause != null) {
+                if (cause instanceof AuthenticationException) {
+                    System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
+                    break;
+                }
+                else if (cause instanceof ApiErrorException) {
+                    ApiErrorException apiException = (ApiErrorException) cause;
+                    System.out.println("ERROR: " + apiException.body().error().message());
+                    break;
+                }
+                cause = cause.getCause();
+            }
+            System.out.println();
             e.printStackTrace();
+            System.out.println();
         } finally {
             System.out.println("Cleaning up...");
             if (scanner != null) {
@@ -169,7 +199,9 @@ public class EncodingWithMESCustomPreset {
             }
 
             cleanup(manager, config.getResourceGroup(), config.getAccountName(), CUSTOM_TWO_LAYER_MP4_PNG, jobName, inputAssetName,
-            outputAssetName, locatorName);
+                outputAssetName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
+            
+            System.out.println("Done.");
         }
     }
 
@@ -543,18 +575,8 @@ public class EncodingWithMESCustomPreset {
      * @return              List of streaming urls.
      */
     private static List<String> getStreamingUrls(MediaManager manager, String resourceGroup, String accountName,
-        String locatorName) {
+        String locatorName, StreamingEndpoint streamingEndpoint) {
         List<String> streamingUrls = new ArrayList<>();
-
-        StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-            .getAsync(resourceGroup, accountName, STREAMING_ENDPOINT_NAME)
-            .toBlocking().first();
-
-        if (streamingEndpoint != null) {
-            if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
-                manager.streamingEndpoints().startAsync(resourceGroup, accountName, STREAMING_ENDPOINT_NAME).await();
-            }
-        }
 
         ListPathsResponse paths = manager.streamingLocators().listPathsAsync(resourceGroup, accountName, locatorName)
             .toBlocking().first();
@@ -581,9 +603,11 @@ public class EncodingWithMESCustomPreset {
      * @param inputAssetName        The input asset name.
      * @param outputAssetName       The output asset name.
      * @param streamingLocatorName  The streaming locator name.
+     * @param stopEndpoint          Stop endpoint if true, otherwise keep endpoint running.
+     * @param streamingEndpointName The endpoint name.
      */
     private static void cleanup(MediaManager manager, String resourceGroupName, String accountName, String transformName, String jobName,
-        String inputAssetName, String outputAssetName, String streamingLocatorName) {
+        String inputAssetName, String outputAssetName, String streamingLocatorName, boolean stopEndpoint, String streamingEndpointName) {
         if (manager == null) {
             return;
         }
@@ -591,7 +615,16 @@ public class EncodingWithMESCustomPreset {
         manager.jobs().deleteAsync(resourceGroupName, accountName, transformName, jobName).await();
         manager.assets().deleteAsync(resourceGroupName, accountName, inputAssetName).await();
         manager.assets().deleteAsync(resourceGroupName, accountName, outputAssetName).await();
-
         manager.streamingLocators().deleteAsync(resourceGroupName, accountName, streamingLocatorName).await();
+
+        if (stopEndpoint) {
+            // Because we started the endpoint, we'll stop it.
+            manager.streamingEndpoints().stopAsync(resourceGroupName, accountName, streamingEndpointName).await();
+        }
+        else {
+            // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
+            // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
+            System.out.println("The endpoint ''" + streamingEndpointName + "'' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+        }
     }
 }
