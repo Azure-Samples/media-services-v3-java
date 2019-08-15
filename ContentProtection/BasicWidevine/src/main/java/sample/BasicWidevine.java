@@ -277,6 +277,7 @@ public class BasicWidevine {
     
                     String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
 
+                    System.out.println();
                     System.out.println("Copy and paste the following URL in your browser to play back the file in the Azure Media Player.");
                     System.out.println("You can use Chrome/Firefox for Widevine.");
                     System.out.println();
