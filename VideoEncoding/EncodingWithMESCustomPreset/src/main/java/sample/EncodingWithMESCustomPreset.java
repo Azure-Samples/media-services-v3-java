@@ -123,9 +123,10 @@ public class EncodingWithMESCustomPreset {
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
                 transform.name(), jobName, asset.name(), outputAsset.name());
 
-            // In this demo code, we will poll for Job status
-            // Polling is not a recommended best practice for production applications because of the latency it introduces.
-            // Overuse of this API may trigger throttling.
+            // In this demo code, we will poll for Job status. Polling is not a recommended best practice for production
+            // applications because of the latency it introduces. Overuse of this API may trigger throttling. Developers
+            // should instead use Event Grid. To see how to implement the event grid, see the sample
+            // https://github.com/Azure-Samples/media-services-v3-java/tree/master/ContentProtection/BasicAESClearKey.
             System.out.println();
             job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
                 transform.name(), jobName);
