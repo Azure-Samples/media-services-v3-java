@@ -12,13 +12,23 @@ import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Callable;
+import java.util.Arrays;
 
 import javax.crypto.SecretKey;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
+import com.microsoft.azure.eventprocessorhost.EventProcessorHost;
+import com.microsoft.azure.eventprocessorhost.EventProcessorOptions;
+import com.microsoft.azure.management.mediaservices.v2018_07_01.ApiErrorException;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.Asset;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.BuiltInStandardEncoderPreset;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicy;
@@ -48,7 +58,11 @@ import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingPolicyS
 import com.microsoft.azure.management.mediaservices.v2018_07_01.Transform;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.TransformOutput;
 import com.microsoft.azure.management.mediaservices.v2018_07_01.implementation.MediaManager;
-import com.microsoft.rest.LogLevel;
+import com.microsoft.azure.storage.blob.CloudBlobContainer;
+import com.microsoft.azure.storage.blob.ListBlobItem;
+import com.microsoft.azure.storage.blob.CloudBlobClient;
+import com.microsoft.azure.storage.blob.CloudBlob;
+import com.microsoft.azure.storage.CloudStorageAccount;
 
 import org.apache.commons.codec.binary.Base64;
 
@@ -57,6 +71,8 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+
+import com.microsoft.rest.LogLevel;
 
 public class BasicWidevine {
     private static final String ADAPTIVE_STREAMING_TRANSFORM_NAME = "MyTransformWithAdaptiveStreamingPreset";
@@ -72,6 +88,8 @@ public class BasicWidevine {
     private static byte[] TOKEN_SIGNING_KEY;
 
     public static void main(String[] args) {
+        // Please make sure you have set configuration in resources/conf/appsettings.json. For more information, see
+        // https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to.
         ConfigWrapper config = new ConfigWrapper();
         runWidevineTest(config);
 
@@ -104,6 +122,8 @@ public class BasicWidevine {
         String jobName = "job-" + uniqueness;
         String outputAssetName = "output-" + uniqueness;
         String locatorName = "locator-" + uniqueness;
+        EventProcessorHost eventProcessorHost = null;
+        boolean stopEndpoint = false;
 
         Scanner scanner = new Scanner(System.in);
 
@@ -118,16 +138,91 @@ public class BasicWidevine {
                 outputAssetName);
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
-                ADAPTIVE_STREAMING_TRANSFORM_NAME, outputAsset.name(), jobName);
+                transform.name(), outputAsset.name(), jobName);
 
             long startedTime = System.currentTimeMillis();
 
-            // In this demo code, we will poll for Job status Polling is not a recommended
-            // best practice for production applications because of the latency it introduces.
-            // Overuse of this API may trigger throttling. Developers should instead use
-            // Event Grid.
-            job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
-                    ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName);
+            try {
+                // First we will try to process Job events through Event Hub in real-time. If this fails for any reason,
+                // we will fall-back on polling Job status instead.
+
+                System.out.println("Creating a new host to process events from Event Hub...");
+
+                String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
+                    config.getStorageAccountName() +
+                    ";AccountKey=" + config.getStorageAccountKey();
+                
+                // Cleanup storage container. We will config Event Hub to use the storage container configured in appsettings.json.
+                // All the blobs in <The container configured in appsettings.json>/$Default will be deleted.
+                CloudStorageAccount account = CloudStorageAccount.parse(storageConnectionString);
+                CloudBlobClient client = account.createCloudBlobClient();
+                CloudBlobContainer container = client.getContainerReference(config.getStorageContainerName());
+                for (ListBlobItem item : container.listBlobs("$Default/", true)) {
+                    if (item instanceof CloudBlob) {
+                        CloudBlob blob = (CloudBlob) item;
+                        blob.delete();
+                    }
+                }
+
+                // Create a new host to process events from an Event Hub.
+                eventProcessorHost = new EventProcessorHost(
+                    EventProcessorHost.createHostName(null),
+                    config.getEventHubName(),
+                    "$Default",         // The name of the consumer group to use when receiving from the Event Hub. DefaultConsumerGroupName is used here.
+                    config.getEventHubConnectionString(),
+                    storageConnectionString,
+                    config.getStorageContainerName()
+                );
+
+                Object monitor = new Object();
+                CompletableFuture<Void> registerResult = eventProcessorHost
+                    .registerEventProcessorFactory(new MediaServicesEventProcessorFactory(jobName, monitor), EventProcessorOptions .getDefaultOptions());
+                registerResult.get();
+
+                // Define a task to wait for the job to finish.
+                Callable<String> jobTask = () -> {
+                    synchronized(monitor) {
+                        monitor.wait();
+                    }
+                    return "Job";
+                };
+
+                // Define another task
+                Callable<String> timeoutTask = () -> {
+                    TimeUnit.MINUTES.sleep(30);
+                    return "Timeout";
+                };
+
+                ExecutorService executor = Executors.newFixedThreadPool(2);
+                List<Callable<String>> tasks = Arrays.asList(jobTask, timeoutTask);
+
+                String result = executor.invokeAny(tasks);
+                if (result.equalsIgnoreCase("Job")) {
+                    // Job finished. Shutdown timeout.
+                    executor.shutdownNow();
+                }
+                else {
+                    // Timeout happened. Switch to polling method.
+                    synchronized(monitor) {
+                        monitor.notify();
+                    }
+
+                    throw new Exception("Timeout happened.");
+                }
+
+                // Get the latest status of the job.
+                job = manager.jobs().getAsync(config.getResourceGroup(), config.getAccountName(), transform.name(), jobName).toBlocking().first();
+            }
+            catch (Exception e)
+            {
+                System.out.println("Warning: Failed to connect to Event Hub, please refer README for Event Hub and storage settings.");
+                // if Event Grid or Event Hub is not configured, We will fall-back on polling instead.
+                // Polling is not a recommended best practice for production applications because of the latency it introduces.
+                // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
+                System.out.println("Failed to start Event Grid monitoring, will use polling job status instead...");
+                job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
+                    transform.name(), jobName);
+            }
 
             long elapsed = (System.currentTimeMillis() - startedTime) / 1000; // Elapsed time in seconds
             System.out.println("Job elapsed time: " + elapsed + " second(s).");
@@ -141,6 +236,7 @@ public class BasicWidevine {
                 // We are using the ContentKeyIdentifierClaim in the ContentKeyPolicy which
                 // means that the token presented to the Key Delivery Component must have
                 // the identifier of the content key in it.
+                System.out.println("Creating a content key policy...");
                 ContentKeyPolicy policy = ensureContentKeyPolicyExists(manager, config.getResourceGroup(),
                     config.getAccountName(), CONTENT_KEY_POLICY_NAME);
 
@@ -148,7 +244,7 @@ public class BasicWidevine {
                     .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
                     .withAssetName(outputAssetName)
                     .withStreamingPolicyName(MULTI_DRM_CENC_STREAMING)
-                    .withDefaultContentKeyPolicyName(CONTENT_KEY_POLICY_NAME)
+                    .withDefaultContentKeyPolicyName(policy.name())
                     .create();
 
                 String keyIdentifier = null;
@@ -165,30 +261,72 @@ public class BasicWidevine {
                 // In order to generate our test token we must get the ContentKeyId to put in the ContentKeyIdentifierClaim claim.
                 String token = createToken(ISSUER, AUDIENCE, keyIdentifier, TOKEN_SIGNING_KEY);
 
-                String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name());
+                StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
+                    .getAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME)
+                    .toBlocking().first();
+    
+                if (streamingEndpoint != null) {
+                    // Start The Streaming Endpoint if it is not running.
+                    if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
+                        System.out.println("Streaming endpoint was stopped, restarting it...");
+                        manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME).await();
 
-                System.out.println("Copy and paste the following URL in your browser to play back the file in the Azure Media Player.");
-                System.out.println("You can use Chrome/Firefox for Widevine.");
-                System.out.println();
+                        // We started the endpoint, we should stop it in cleanup.
+                        stopEndpoint = true;
+                    }
+    
+                    String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
 
-                System.out.println("https://ampdemo.azureedge.net/?url=" + dashPath + "&widevine=true&token=Bearer%3D" + token);
-                System.out.println();
+                    System.out.println();
+                    System.out.println("Copy and paste the following URL in your browser to play back the file in the Azure Media Player.");
+                    System.out.println("You can use Chrome/Firefox for Widevine.");
+                    System.out.println();
+                    System.out.println("https://ampdemo.azureedge.net/?url=" + dashPath + "&widevine=true&token=Bearer%3D" + token);
+                    System.out.println();
+                }
+                else {
+                    System.out.println("Could not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
+                }
 
-                System.out.println("When finished testing press enter to cleanup.");
+                System.out.println("When finished testing press ENTER to cleanup.");
                 System.out.flush();
                 scanner.nextLine();
             }
         } catch (Exception e) {
-            System.out.println(e);
+            Throwable cause = e;
+            while (cause != null) {
+                if (cause instanceof AuthenticationException) {
+                    System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
+                    break;
+                }
+                else if (cause instanceof ApiErrorException) {
+                    ApiErrorException apiException = (ApiErrorException) cause;
+                    System.out.println("ERROR: " + apiException.body().error().message());
+                    break;
+                }
+                cause = cause.getCause();
+            }
+            System.out.println();
             e.printStackTrace();
+            System.out.println();
         } finally {
             System.out.println("Cleaning up...");
+
+            cleanup(manager, config.getResourceGroup(), config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName,
+                outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME, stopEndpoint, DEFAULT_STREAMING_ENDPOINT_NAME);
+            
             if (scanner != null) {
                 scanner.close();
             }
 
-            cleanup(manager, config.getResourceGroup(), config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName,
-                outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME);
+            if (eventProcessorHost != null)
+            {
+                System.out.println("Unregistering event processor...");
+
+                // Disposes of the Event Processor Host.
+                eventProcessorHost.unregisterEventProcessor();
+                System.out.println();
+            }
         }
     }
 
@@ -223,6 +361,7 @@ public class BasicWidevine {
             outputs.add(transformOutput);
 
             // Create the Transform with the output defined above.
+            System.out.println("Creating a transform...");
             transform = manager.transforms().define(transformName).withExistingMediaservice(resourceGroup, accountName)
                     .withOutputs(outputs).create();
         }
@@ -242,7 +381,8 @@ public class BasicWidevine {
      */
     private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
             String assetName) {
-         // We are assuming the asset name is unique.
+        // We are assuming the asset name is unique.
+        System.out.println("Creating an output asset...");
         Asset outputAsset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
                 .create();
 
@@ -279,6 +419,7 @@ public class BasicWidevine {
         // If you already have a job with the desired name, use the Jobs.Get method
         // to get the existing job. In Media Services v3, the Get method on entities returns null
         // if the entity doesn't exist (a case-insensitive check on the name).
+        System.out.println("Creating a job...");
         Job job = manager.jobs().define(jobName).withExistingTransform(resourceGroupName, accountName, transformName)
                 .withInput(jobInput).withOutputs(jobOutputs).create();
 
@@ -495,20 +636,11 @@ public class BasicWidevine {
      * @param resourceGroup         The name of the resource group within the Azure subscription
      * @param accountName           The Media Services account name
      * @param locatorName           The name of the StreamingLocator that was created
-     * @return
+     * @return                      The DASH streaming url.
      */
-    private static String getDASHStreamingUrl(MediaManager manager, String resourceGroup, String accountName, String locatorName) {
+    private static String getDASHStreamingUrl(MediaManager manager, String resourceGroup, String accountName,
+        String locatorName, StreamingEndpoint streamingEndpoint) {
         String dashPath = "";
-
-        StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-            .getAsync(resourceGroup, accountName, DEFAULT_STREAMING_ENDPOINT_NAME)
-            .toBlocking().first();
-
-        if (streamingEndpoint != null) {
-            if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
-                manager.streamingEndpoints().startAsync(resourceGroup, accountName, DEFAULT_STREAMING_ENDPOINT_NAME).await();
-            }
-        }
 
         ListPathsResponse paths = manager.streamingLocators()
             .listPathsAsync(resourceGroup, accountName, locatorName)
@@ -542,10 +674,12 @@ public class BasicWidevine {
      * @param jobName               The job name.
      * @param assetName             The asset name.
      * @param locatorName           The name of the StreamingLocator that was created.
-     * @param contentKeyPolicyName
+     * @param contentKeyPolicyName  The content key policy name.
+     * @param stopEndpoint          Stop endpoint if true, otherwise keep endpoint running.
+     * @param streamingEndpointName The endpoint name.
      */
     public static void cleanup(MediaManager manager, String resourceGroup, String accountName, String transformName, String jobName,
-        String assetName, String locatorName, String contentKeyPolicyName) {
+        String assetName, String locatorName, String contentKeyPolicyName, boolean stopEndpoint, String streamingEndpointName) {
         if (manager == null) {
             return;
         }
@@ -555,5 +689,15 @@ public class BasicWidevine {
 
         manager.streamingLocators().deleteAsync(resourceGroup, accountName, locatorName).await();
         manager.contentKeyPolicies().deleteAsync(resourceGroup, accountName, contentKeyPolicyName).await();
+
+        if (stopEndpoint) {
+            // Because we started the endpoint, we'll stop it.
+            manager.streamingEndpoints().stopAsync(resourceGroup, accountName, streamingEndpointName).await();
+        }
+        else {
+            // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
+            // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
+            System.out.println("The endpoint ''" + streamingEndpointName + "'' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+        }
     }
 }
