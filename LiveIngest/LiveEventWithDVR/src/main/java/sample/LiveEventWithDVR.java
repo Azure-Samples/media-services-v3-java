@@ -415,7 +415,7 @@ public class LiveEventWithDVR {
 
     private static void cleanupLocator(MediaManager manager, String resourceGroup, String accountName, String streamingLocatorName) {
         try {
-            manager.streamingEndpoints().deleteAsync(resourceGroup, accountName, streamingLocatorName).await();
+            manager.streamingLocators().deleteAsync(resourceGroup, accountName, streamingLocatorName).await();
         }
         catch (ApiErrorException e) {
             System.out.println("cleanupLocator -- Hit ApiErrorException");
