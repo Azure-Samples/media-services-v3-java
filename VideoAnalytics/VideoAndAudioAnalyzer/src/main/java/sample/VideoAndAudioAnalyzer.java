@@ -114,7 +114,7 @@ public class VideoAndAudioAnalyzer {
                     outputAssetName);
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
-                    VIDEO_ANALYZER_TRANSFORM_NAME, jobName, inputAssetName, outputAsset.name());
+                videoAnalyzerTransform.name(), jobName, inputAssetName, outputAsset.name());
 
             long startedTime = System.currentTimeMillis();
             
@@ -123,7 +123,7 @@ public class VideoAndAudioAnalyzer {
                 // First we will try to process Job events through Event Hub in real-time. If this fails for any reason,
                 // we will fall-back on polling Job status instead.
 
-                System.out.println("Creating a new host to process events from an Event Hub...");
+                System.out.println("Creating an event processor host to process events from Event Hub...");
 
                 String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
                     config.getStorageAccountName() +
@@ -274,6 +274,7 @@ public class VideoAndAudioAnalyzer {
             outputs.add(transformOutput);
 
             // Create the Transform with the outputs defined above
+            System.out.println("Creating a transform...");
             transform = manager.transforms().define(transformName)
                 .withExistingMediaservice(resourceGroup, accountName)
                 .withOutputs(outputs)
@@ -299,6 +300,7 @@ public class VideoAndAudioAnalyzer {
         // Call Media Services API to create an Asset.
         // This method creates a container in storage for the Asset.
         // The files (blobs) associated with the asset will be stored in this container.
+        System.out.println("Creating an input asset...");
         Asset asset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
                 .create();
 
@@ -323,6 +325,7 @@ public class VideoAndAudioAnalyzer {
         CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
 
         // Use Storage API to upload the file into the container in storage.
+        System.out.println("Uploading a media file to the asset...");
         blob.uploadFromFile(fileToUpload);
 
         return asset;
@@ -343,6 +346,7 @@ public class VideoAndAudioAnalyzer {
     private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
             String assetName) {
         // In this example, we are assuming that the asset name is unique.
+        System.out.println("Creating an output asset...");
         Asset outputAsset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
                 .create();
 
@@ -375,6 +379,7 @@ public class VideoAndAudioAnalyzer {
         jobOutputs.add(output);
 
         // Call Media Services API to create the job.
+        System.out.println("Creating a job...");
         Job job = manager.jobs().define(jobName)
             .withExistingTransform(resourceGroupName, accountName, transformName)
             .withInput(jobInput)
@@ -488,7 +493,7 @@ public class VideoAndAudioAnalyzer {
         } while (continuationToken != null);
 
         System.out.println("Downloading completed.");
-        System.out.println("The result files can be found in " + directory.getPath());
+        System.out.println("Please check the result files in " + directory.getPath() + ".");
         System.out.println();
     }
 

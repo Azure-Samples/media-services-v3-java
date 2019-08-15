@@ -28,6 +28,6 @@ public class MediaServicesEventProcessorFactory implements IEventProcessorFactor
 
     @Override
     public MediaServicesEventProcessor createEventProcessor(PartitionContext context) throws Exception {
-		return new MediaServicesEventProcessor(JOB_NAME, MONITOR, LIVE_EVENT_NAME);
-	}
+        return new MediaServicesEventProcessor(JOB_NAME, MONITOR, LIVE_EVENT_NAME);
+    }
 }
