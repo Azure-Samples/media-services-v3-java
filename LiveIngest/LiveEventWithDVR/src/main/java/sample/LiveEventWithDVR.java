@@ -418,7 +418,7 @@ public class LiveEventWithDVR {
             manager.streamingLocators().deleteAsync(resourceGroup, accountName, streamingLocatorName).await();
         }
         catch (ApiErrorException e) {
-            System.out.println("cleanupLocator -- Hit ApiErrorException");
+            System.out.println("ApiErrorException");
             System.out.println("\tCode: " + e.body().error().code());
             System.out.println("\tMessage: " + e.body().error().message());
         }
