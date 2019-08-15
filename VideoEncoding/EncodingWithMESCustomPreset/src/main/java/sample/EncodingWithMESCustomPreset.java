@@ -144,6 +144,11 @@ public class EncodingWithMESCustomPreset {
 
                 downloadOutputAsset(manager, config.getResourceGroup(), config.getAccountName(), outputAsset.name(),
                         outputFolder);
+                System.out.println("Please check the files at " + outputFolder.getAbsolutePath());
+                System.out.println("When finished, press ENTER to continue.");
+                System.out.println();
+                System.out.flush();
+                scanner.nextLine();
 
                 StreamingLocator locator = createStreamingLocator(manager, config.getResourceGroup(), config.getAccountName(), outputAsset.name(), locatorName);
 
@@ -171,7 +176,7 @@ public class EncodingWithMESCustomPreset {
             }
 
             System.out.println();
-            System.out.println("To try streaming, copy and paste the Streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
+            System.out.println("To stream, copy and paste the Streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
             System.out.println("When finished, press ENTER to cleanup.");
             System.out.flush();
             scanner.nextLine();
@@ -624,7 +629,7 @@ public class EncodingWithMESCustomPreset {
         else {
             // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
             // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
-            System.out.println("The endpoint ''" + streamingEndpointName + "'' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+            System.out.println("The endpoint '" + streamingEndpointName + "' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
         }
     }
 }
