@@ -8,8 +8,15 @@ products:
 
 # Dynamically encrypt your content with PlayReady
 
-This sample demonstrates how to create a transform with built-in AdaptiveStreaming preset, submit a job, create a ContentKeyPolicy with PlayReady configuration using a secret key, associate the ContentKeyPolicy with StreamingLocator, get a token and print a url for playback in a Azure Media Player. When a user requests PlayReady-protected content, the player application requests a license from the Media Services license service. If the player application is authorized, the Media Services license service issues a license to the player. A PlayReady license contains the decryption key that can be used by the client player to decrypt and stream the content.
+This sample demonstrates how to dynamically encrypt your content with PlayReady DRM. It shows how to perform the following tasks:
 
+1. Creates a transform with built-in AdaptiveStreaming preset
+1. Submits a job
+1. Creates a ContentKeyPolicy with PlayReady configuration using a secret key
+1. Associates the ContentKeyPolicy with StreamingLocator
+1. Gets a token and print a url for playback in a Azure Media Player
+
+ When a user requests PlayReady-protected content, the player application requests a license from the Media Services license service. If the player application is authorized, the Media Services license service issues a license to the player. A PlayReady license contains the decryption key that can be used by the client player to decrypt and stream the content.
 
 > [!TIP]
 > The `BasicPlayReady.java` file (in the `BasicPlayReady\src\main\java\sample` folder) has extensive comments.
@@ -22,15 +29,53 @@ This sample demonstrates how to create a transform with built-in AdaptiveStreami
 
 ## Running the example
 
-* Configure `appsettings.json` with appropriate access values.
+### Configure `appsettings.json` with appropriate access values
 
-    Get credentials needed to use Media Services APIs by following [Access APIs](https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to). Open the `src/main/resources/conf/appsettings.json `configuration file and paste the values in the file.
-* Clean and build the project. 
+    Get credentials needed to use Media Services APIs by following [Access APIs](https://docs.microsoft.com/azure/media-services/latest/access-api-cli-how-to). Open the `src/main/resources/conf/appsettings.json` configuration file and paste the values in the file.
+
+### Clean and build the project
 
     Open a terminal window, go to the root folder of this project, run `mvn clean compile`.
-* Run this project. 
+
+### Run this project
 
     Execute `mvn exec:java`, then follow the instructions in the output console.
+
+### Optional, do the following steps if you want to use Event Grid for job monitoring
+
+Please note, there are costs for using Event Hub. For more details, refer [Event Hubs pricing](https://azure.microsoft.com/en-in/pricing/details/event-hubs/) and [FAQ](https://docs.microsoft.com/en-us/azure/event-hubs/event-hubs-faq#pricing)
+
+* Enable Event Grid resource provider
+
+  `az provider register --namespace Microsoft.EventGrid`
+
+* To check if registered, run the next command. You should see "Registered"
+
+  `az provider show --namespace Microsoft.EventGrid --query "registrationState"`
+
+* Create an Event Hub
+
+  `namespace=<unique-namespace-name>`\
+  `hubname=<event-hub-name>`\
+  `az eventhubs namespace create --name $namespace --resource-group <resource-group>`\
+  `az eventhubs eventhub create --name $hubname --namespace-name $namespace --resource-group <resource-group>`
+
+* Subscribe to Media Services events
+
+  `hubid=$(az eventhubs eventhub show --name $hubname --namespace-name $namespace --resource-group <resource-group> --query id --output tsv)`\
+  `amsResourceId=$(az ams account show --name <ams-account> --resource-group <resource-group> --query id --output tsv)`\
+  `az eventgrid event-subscription create --resource-id $amsResourceId --name <event-subscription-name> --endpoint-type eventhub --endpoint $hubid`
+
+* Create a storage account and container for Event Processor Host if you don't have one
+  [Create a storage account for Event Processor Host
+  ](https://docs.microsoft.com/en-us/azure/event-hubs/event-hubs-dotnet-standard-getstarted-send#create-a-storage-account-for-event-processor-host)
+
+* Update appsettings.json with your Event Hub and Storage information
+  StorageAccountName: The name of your storage account.\
+  StorageAccountKey: The access key for your storage account. Navigate to Azure portal, "All resources", search your storage account, then "Access keys", copy key1.\
+  StorageContainerName: The name of your container. Click Blobs in your storage account, find you container and copy the name.\
+  EventHubConnectionString: The Event Hub connection string. search your namespace you just created. &lt;your namespace&gt; -&gt; Shared access policies -&gt; RootManageSharedAccessKey -&gt; Connection string-primary key.\
+  EventHubName: The Event Hub name.  &lt;your namespace&gt; -&gt; Event Hubs.
 
 ## Key concepts
 
@@ -40,6 +85,5 @@ This sample demonstrates how to create a transform with built-in AdaptiveStreami
 
 ## Next steps
 
-- [Azure Media Services pricing](https://azure.microsoft.com/pricing/details/media-services/)
-- [Azure Media Services v3 Documentation](https://docs.microsoft.com/azure/media-services/latest/)
-
+* [Azure Media Services pricing](https://azure.microsoft.com/pricing/details/media-services/)
+* [Azure Media Services v3 Documentation](https://docs.microsoft.com/azure/media-services/latest/)
