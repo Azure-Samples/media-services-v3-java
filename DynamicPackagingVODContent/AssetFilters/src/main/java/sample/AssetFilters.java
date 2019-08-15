@@ -118,7 +118,7 @@ public class AssetFilters {
             // In this demo code, we will poll for Job status. Polling is not a recommended best practice for production
             // applications because of the latency it introduces. Overuse of this API may trigger throttling. Developers
             // should instead use Event Grid. To see how to implement the event grid, see the sample
-            // https://github.com/v-jizhang/media-services-v3-java/tree/master/ContentProtection/BasicAESClearKey.
+            // https://github.com/Azure-Samples/media-services-v3-java/tree/master/ContentProtection/BasicAESClearKey.
             job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(), transform.name(),
                     jobName);
 
