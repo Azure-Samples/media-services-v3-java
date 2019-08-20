@@ -585,7 +585,7 @@ public class BasicWidevine {
 
         PolicyOverrides policyOverrides = new PolicyOverrides();
         policyOverrides.setCanPlay(true);
-        policyOverrides.setCanPersist(true);
+        policyOverrides.setCanPersist(false);
         policyOverrides.setCanRenew(false);
         policyOverrides.setRentalDurationSeconds(2592000);
         policyOverrides.setPlaybackDurationSeconds(10800);

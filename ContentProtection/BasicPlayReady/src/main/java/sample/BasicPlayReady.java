@@ -554,10 +554,9 @@ public class BasicPlayReady {
     private static ContentKeyPolicyPlayReadyConfiguration configurePlayReadyLicenseTemplate() {
         ContentKeyPolicyPlayReadyLicense objContentKeyPolicyPlayReadyLicense = new ContentKeyPolicyPlayReadyLicense()
             .withAllowTestDevices(true)
-            .withBeginDate(new DateTime(2019, 6, 4, 0, 0))
             .withContentKeyLocation(new ContentKeyPolicyPlayReadyContentEncryptionKeyFromHeader())
             .withContentType(ContentKeyPolicyPlayReadyContentType.ULTRA_VIOLET_STREAMING)
-            .withLicenseType(ContentKeyPolicyPlayReadyLicenseType.PERSISTENT)
+            .withLicenseType(ContentKeyPolicyPlayReadyLicenseType.NON_PERSISTENT)
             .withPlayRight(new ContentKeyPolicyPlayReadyPlayRight()
                 .withImageConstraintForAnalogComponentVideoRestriction(true)
                 .withExplicitAnalogTelevisionOutputRestriction(
