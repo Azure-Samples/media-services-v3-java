@@ -285,7 +285,7 @@ public class BasicPlayReady {
                     System.out.println("You can use Edge/IE11 for PlayReady.");
                     System.out.println();
 
-                    System.out.println("https://ampdemo.azureedge.net/?url=" + dashPath + "&playready=tru&token=Bearer%3D" + token);
+                    System.out.println("https://ampdemo.azureedge.net/?url=" + dashPath + "&playready=true&token=Bearer%3D" + token);
                     System.out.println();
                 }
                 else {
