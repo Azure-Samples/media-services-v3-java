@@ -71,7 +71,7 @@ public class OfflinePlayReadyAndWidevine{
 
     public static void main(String[] args) {
         ConfigWrapper config = new ConfigWrapper();
-        runPlayReadyTest(config);
+        runPlayReadyAndWidevineTest(config);
 
         config.close();
         System.exit(0);
@@ -83,7 +83,7 @@ public class OfflinePlayReadyAndWidevine{
      * @param config This param is of type ConfigWrapper, which reads values from
      *               local configuration file.
      */
-    private static void runPlayReadyTest(ConfigWrapper config) {
+    private static void runPlayReadyAndWidevineTest(ConfigWrapper config) {
         // Connect to media services, please see https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
         // for details.
         ApplicationTokenCredentials credentials = new ApplicationTokenCredentials(config.getAadClientId(),
