@@ -54,7 +54,7 @@ import com.microsoft.rest.LogLevel;
 
 import org.joda.time.DateTime;
 
-public class VideoAndAudioAnalyzer {
+public class VideoAnalyzer {
     private static final String VIDEO_ANALYZER_TRANSFORM_NAME = "MyVideoAnalyzerTransformName";
     private static final String INPUT_MP4_RESOURCE = "video/ignite.mp4";
     private static final String OUTPUT_FOLDER_NAME = "Output";
@@ -97,8 +97,7 @@ public class VideoAndAudioAnalyzer {
 
         try {
             // Create a video analyzer preset with both video and audio insights.
-            Preset preset = new VideoAnalyzerPreset().withInsightsToExtract(InsightsType.ALL_INSIGHTS)
-                    .withAudioLanguage("en-US");
+            Preset preset = new VideoAnalyzerPreset().withInsightsToExtract(InsightsType.VIDEO_INSIGHTS_ONLY);
 
             // Ensure that you have the desired encoding Transform. This is really a one
             // time setup operation.
@@ -320,7 +319,7 @@ public class VideoAndAudioAnalyzer {
         // That was created by calling Asset's create() method.
         CloudBlobContainer container = new CloudBlobContainer(sasUri);
 
-        String fileToUpload = VideoAndAudioAnalyzer.class.getClassLoader().getResource(videoResource).getPath();
+        String fileToUpload = VideoAnalyzer.class.getClassLoader().getResource(videoResource).getPath();
         File file = new File(fileToUpload);
         CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
 
