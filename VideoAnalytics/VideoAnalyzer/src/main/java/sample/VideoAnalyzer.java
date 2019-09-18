@@ -449,8 +449,6 @@ public class VideoAnalyzer {
      */
     private static void downloadOutputAsset(MediaManager manager, String resourceGroup, String accountName,
             String assetName, File outputFolder) throws URISyntaxException, StorageException, IOException {
-        final int LIST_BLOBS_SEGMENT_MAX_RESULT = 5;
-
         // Specify read permission and 1 hour expiration time for the SAS URL.
         ListContainerSasInput parameters = new ListContainerSasInput()
             .withPermissions(AssetContainerPermission.READ)
@@ -475,6 +473,10 @@ public class VideoAnalyzer {
         ResultContinuation continuationToken = null;
 
         do {
+            // A non-negative integer value that indicates the maximum number of results to be returned at a time,
+            // up to the per-operation limit of 5000. If this value is null, the maximum possible number of results
+            // will be returned, up to 5000.
+            Integer LIST_BLOBS_SEGMENT_MAX_RESULT = null;
             ResultSegment<ListBlobItem> segment = container.listBlobsSegmented(null, true,
                     EnumSet.noneOf(BlobListingDetails.class), LIST_BLOBS_SEGMENT_MAX_RESULT, continuationToken, null,
                     null);
