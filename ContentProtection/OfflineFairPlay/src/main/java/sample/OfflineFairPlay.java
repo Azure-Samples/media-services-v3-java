@@ -530,8 +530,11 @@ public class OfflineFairPlay{
             .withAsk(askBytes)
             .withFairPlayPfx(certBase64)
             .withFairPlayPfxPassword(fairPlayPfxPassword)
-            .withRentalAndLeaseKeyType(ContentKeyPolicyFairPlayRentalAndLeaseKeyType.PERSISTENT_UNLIMITED)
-            .withRentalDuration(2249);
+            .withRentalAndLeaseKeyType(ContentKeyPolicyFairPlayRentalAndLeaseKeyType.DUAL_EXPIRY)
+            .withRentalDuration(0)
+            .withOfflineRentalConfiguration(new ContentKeyPolicyFairPlayOfflineRentalConfiguration()
+                .withStorageDurationSeconds(300000)
+                .withPlaybackDurationSeconds(500000));
         
         return objContentKeyPolicyPlayReadyConfiguration;
     }
