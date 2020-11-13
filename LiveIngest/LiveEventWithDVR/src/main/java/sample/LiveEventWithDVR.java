@@ -17,36 +17,36 @@ import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.eventprocessorhost.EventProcessorHost;
 import com.microsoft.azure.eventprocessorhost.EventProcessorOptions;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.Asset;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.AssetFilter;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.IPAccessControl;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.IPRange;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ListPathsResponse;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEvent;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventEncoding;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventEncodingType;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventInput;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventInputAccessControl;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventInputProtocol;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventPreview;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventPreviewAccessControl;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveEventResourceState;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.LiveOutput;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.PresentationTimeRange;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamOptionsFlag;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingEndpoint;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingEndpointResourceState;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingLocator;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingPath;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingPolicyStreamingProtocol;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.implementation.MediaManager;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.Asset;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.AssetFilter;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.IPAccessControl;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.IPRange;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ListPathsResponse;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEvent;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventEncoding;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventEncodingType;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventInput;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventInputAccessControl;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventInputProtocol;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventPreview;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventPreviewAccessControl;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventResourceState;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveOutput;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.PresentationTimeRange;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamOptionsFlag;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpoint;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpointResourceState;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingLocator;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPath;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPolicyStreamingProtocol;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
 import com.microsoft.azure.storage.blob.CloudBlobContainer;
 import com.microsoft.azure.storage.blob.ListBlobItem;
 import com.microsoft.azure.storage.blob.CloudBlobClient;
 import com.microsoft.azure.storage.blob.CloudBlob;
 import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.rest.LogLevel;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ApiErrorException;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ApiErrorException;
 
 public class LiveEventWithDVR {
     public static void main(String[] args) {
@@ -166,9 +166,9 @@ public class LiveEventWithDVR {
                 .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
                 .withAutoStart(true)
                 .withInput(new LiveEventInput().withStreamingProtocol(LiveEventInputProtocol.RTMP).withAccessControl(liveEventInputAccess))
-                .withEncoding(new LiveEventEncoding().withEncodingType(LiveEventEncodingType.NONE).withPresetName(null))
-                .withLocation(config.getRegion())
-                .withVanityUrl(false)
+                .withLocation(config.getRegion())  
+				.withEncoding(new LiveEventEncoding().withEncodingType(LiveEventEncodingType.NONE).withPresetName(null))
+                .withUseStaticHostname(false)
                 .withDescription("Sample LiveEvent for testing")
                 .withPreview(liveEventPreview)
                 .withStreamOptions(streamOptions)

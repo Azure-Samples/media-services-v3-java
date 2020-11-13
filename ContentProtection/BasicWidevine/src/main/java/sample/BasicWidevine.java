@@ -28,36 +28,36 @@ import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
 import com.microsoft.azure.eventprocessorhost.EventProcessorHost;
 import com.microsoft.azure.eventprocessorhost.EventProcessorOptions;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ApiErrorException;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.Asset;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.BuiltInStandardEncoderPreset;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicy;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicyOption;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicyProperties;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicyRestriction;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicyRestrictionTokenKey;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicyRestrictionTokenType;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicySymmetricTokenKey;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicyTokenClaim;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicyTokenRestriction;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ContentKeyPolicyWidevineConfiguration;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.EncoderNamedPreset;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.Job;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.JobInputHttp;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.JobOutput;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.JobOutputAsset;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.JobState;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.ListPathsResponse;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingEndpoint;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingEndpointResourceState;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingLocator;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingLocatorContentKey;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingLocatorContentKeyType;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingPath;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.StreamingPolicyStreamingProtocol;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.Transform;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.TransformOutput;
-import com.microsoft.azure.management.mediaservices.v2018_07_01.implementation.MediaManager;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ApiErrorException;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.Asset;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.BuiltInStandardEncoderPreset;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicy;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyOption;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyProperties;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyRestriction;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyRestrictionTokenKey;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyRestrictionTokenType;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicySymmetricTokenKey;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyTokenClaim;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyTokenRestriction;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyWidevineConfiguration;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.EncoderNamedPreset;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.Job;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.JobInputHttp;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.JobOutput;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.JobOutputAsset;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.JobState;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.ListPathsResponse;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpoint;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpointResourceState;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingLocator;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingLocatorContentKey;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingLocatorContentKeyType;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPath;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPolicyStreamingProtocol;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.Transform;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.TransformOutput;
+import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
 import com.microsoft.azure.storage.blob.CloudBlobContainer;
 import com.microsoft.azure.storage.blob.ListBlobItem;
 import com.microsoft.azure.storage.blob.CloudBlobClient;
@@ -693,11 +693,14 @@ public class BasicWidevine {
         if (stopEndpoint) {
             // Because we started the endpoint, we'll stop it.
             manager.streamingEndpoints().stopAsync(resourceGroup, accountName, streamingEndpointName).await();
-        }
-        else {
-            // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
-            // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
-            System.out.println("The endpoint ''" + streamingEndpointName + "'' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
+        } else {
+            // We will keep the endpoint running because it was not started by this sample.
+            // Please note, There are costs to keep it running.
+            // Please refer
+            // https://azure.microsoft.com/en-us/pricing/details/media-services/ for
+            // pricing.
+            System.out.println("The endpoint ''" + streamingEndpointName
+                    + "'' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
         }
     }
 }
