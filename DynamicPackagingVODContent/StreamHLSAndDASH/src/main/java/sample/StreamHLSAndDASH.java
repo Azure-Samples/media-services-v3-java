@@ -11,6 +11,9 @@ import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.UUID;
 
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobContainerClientBuilder;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
 import com.microsoft.aad.adal4j.AuthenticationException;
@@ -36,8 +39,6 @@ import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPolicyS
 import com.microsoft.azure.management.mediaservices.v2020_05_01.Transform;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.TransformOutput;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
-import com.microsoft.azure.storage.blob.CloudBlobContainer;
-import com.microsoft.azure.storage.blob.CloudBlockBlob;
 import com.microsoft.rest.LogLevel;
 
 import org.joda.time.DateTime;
@@ -61,6 +62,7 @@ public class StreamHLSAndDASH {
 
     /**
      * Run the sample.
+     *
      * @param config This param is of type ConfigWrapper. This class reads values from local configuration file.
      */
     private static void runStreamHlsAndDash(ConfigWrapper config) {
@@ -94,7 +96,7 @@ public class StreamHLSAndDASH {
 
             // Create a new input Asset and upload the specified local video file into it.
             Asset inputAsset = createInputAsset(manager, config.getResourceGroup(), config.getAccountName(), inputAssetName,
-                INPUT_MP4_RESOURCE);
+                    INPUT_MP4_RESOURCE);
 
             // Output from the encoding Job must be written to an Asset, so let's create one. Note that we
             // are using a unique asset name, there should not be a name collision.
@@ -103,10 +105,10 @@ public class StreamHLSAndDASH {
                     outputAssetName);
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(), transform.name(), jobName,
-            inputAsset.name(), outputAsset.name());
+                    inputAsset.name(), outputAsset.name());
 
             long startedTime = System.currentTimeMillis();
-            
+
             // In this demo code, we will poll for Job status. Polling is not a recommended best practice for production
             // applications because of the latency it introduces. Overuse of this API may trigger throttling. Developers
             // should instead use Event Grid. To see how to implement the event grid, see the sample
@@ -124,11 +126,11 @@ public class StreamHLSAndDASH {
                 // Now that the content has been encoded, publish it for Streaming by creating
                 // a StreamingLocator. 
                 StreamingLocator locator = getStreamingLocator(manager, config.getResourceGroup(), config.getAccountName(),
-                    outputAsset.name(), locatorName);
+                        outputAsset.name(), locatorName);
 
                 StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-                    .getAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME)
-                    .toBlocking().first();
+                        .getAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME)
+                        .toBlocking().first();
 
                 if (streamingEndpoint != null) {
                     // Start The Streaming Endpoint if it is not running.
@@ -141,15 +143,14 @@ public class StreamHLSAndDASH {
 
                     List<String> urls = getHlsAndDashStreamingUrls(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
                     System.out.println();
-                    for (String url: urls) {
+                    for (String url : urls) {
                         System.out.println(url);
                     }
                     System.out.println();
 
                     System.out.println();
                     System.out.println("Copy and paste the Streaming URL into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
-                }
-                else {
+                } else {
                     System.out.println("Could not find streaming endpoint: " + STREAMING_ENDPOINT_NAME);
                 }
 
@@ -167,8 +168,7 @@ public class StreamHLSAndDASH {
                 if (cause instanceof AuthenticationException) {
                     System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
                     break;
-                }
-                else if (cause instanceof ApiErrorException) {
+                } else if (cause instanceof ApiErrorException) {
                     ApiErrorException apiException = (ApiErrorException) cause;
                     System.out.println("ERROR: " + apiException.body().error().message());
                     break;
@@ -184,7 +184,7 @@ public class StreamHLSAndDASH {
                 scanner.close();
             }
             cleanup(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME, jobName, inputAssetName,
-                outputAssetName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
+                    outputAssetName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
             System.out.println("Done.");
         }
     }
@@ -193,27 +193,24 @@ public class StreamHLSAndDASH {
      * If the specified transform exists, get that transform. If the it does not
      * exist, creates a new transform with the specified output. In this case, the
      * output is set to encode a video using the passed in preset.
-     * 
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param transformName The name of the transform.
-     * @param preset        The preset to be used in the transform.
-     * @return              The transform found or created.
+     * @return The transform found or created.
      */
     private static Transform ensureTransformExists(MediaManager manager, String resourceGroup, String accountName,
-            String transformName) {
+                                                   String transformName) {
         Transform transform;
         try {
             // Does a Transform already exist with the desired name? Assume that an existing Transform with the desired name
             // also uses the same recipe or Preset for processing content.
             transform = manager.transforms()
-                .getAsync(resourceGroup, accountName, transformName)
-                .toBlocking()
-                .first();
-        }
-        catch(NoSuchElementException nse)
-        {
+                    .getAsync(resourceGroup, accountName, transformName)
+                    .toBlocking()
+                    .first();
+        } catch (NoSuchElementException nse) {
             // Media Services V3 throws an exception when not found.
             transform = null;
         }
@@ -225,10 +222,10 @@ public class StreamHLSAndDASH {
             // Create the transform.
             System.out.println("Creating a transform...");
             transform = manager.transforms()
-                .define(transformName)
-                .withExistingMediaservice(resourceGroup, accountName)
-                .withOutputs(outputs)
-                .create();
+                    .define(transformName)
+                    .withExistingMediaservice(resourceGroup, accountName)
+                    .withOutputs(outputs)
+                    .create();
         }
 
         return transform;
@@ -236,33 +233,34 @@ public class StreamHLSAndDASH {
 
     /**
      * Create an asset.
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param assetName     The name of the asset to be created. It is known to be unique.
-     * @return              The asset created.
+     * @return The asset created.
      */
     private static Asset createAsset(MediaManager manager, String resourceGroup, String accountName,
-            String assetName) {
+                                     String assetName) {
         return manager.assets()
-            .define(assetName)
-            .withExistingMediaservice(resourceGroup, accountName)
-            .create();
+                .define(assetName)
+                .withExistingMediaservice(resourceGroup, accountName)
+                .create();
     }
 
     /**
      * Create and submit a job.
-     * @param manager           The entry point of Azure Media resource management.
-     * @param resourceGroup     The name of the resource group within the Azure subscription.
-     * @param accountName       The Media Services account name.
-     * @param transformName     The name of the transform.
-     * @param jobName           The name of the job.
-     * @param jobInput          The input to the job.
-     * @param outputAssetName   The name of the asset that the job writes to.
-     * @return                  The job created.
+     *
+     * @param manager         The entry point of Azure Media resource management.
+     * @param resourceGroup   The name of the resource group within the Azure subscription.
+     * @param accountName     The Media Services account name.
+     * @param transformName   The name of the transform.
+     * @param jobName         The name of the job.
+     * @param outputAssetName The name of the asset that the job writes to.
+     * @return The job created.
      */
     private static Job submitJob(MediaManager manager, String resourceGroup, String accountName, String transformName,
-            String jobName, String inputAssetName, String outputAssetName) {
+                                 String jobName, String inputAssetName, String outputAssetName) {
         // Use the name of the created input asset to create the job input.
         JobInput jobInput = new JobInputAsset().withAssetName(inputAssetName);
 
@@ -274,14 +272,13 @@ public class StreamHLSAndDASH {
         try {
             System.out.println("Creating a job...");
             job = manager.jobs().define(jobName)
-                .withExistingTransform(resourceGroup, accountName, transformName)
-                .withInput(jobInput)
-                .withOutputs(jobOutputs)
-                .create();
-        }
-        catch (ApiErrorException exception) {
+                    .withExistingTransform(resourceGroup, accountName, transformName)
+                    .withInput(jobInput)
+                    .withOutputs(jobOutputs)
+                    .create();
+        } catch (ApiErrorException exception) {
             System.out.println("ERROR: API call failed with error code " + exception.body().error().code() +
-                " and message '" + exception.body().error().message() + "'");
+                    " and message '" + exception.body().error().message() + "'");
             throw exception;
         }
 
@@ -290,16 +287,16 @@ public class StreamHLSAndDASH {
 
     /**
      * Polls Media Services for the status of the Job.
-     * 
+     *
      * @param manager       This is the entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param transformName The name of the transform.
      * @param jobName       The name of the job submitted.
-     * @return              The job.
+     * @return The job.
      */
     private static Job waitForJobToFinish(MediaManager manager, String resourceGroup, String accountName,
-            String transformName, String jobName) {
+                                          String transformName, String jobName) {
         final int SLEEP_INTERVAL = 10 * 1000;
 
         Job job = null;
@@ -336,53 +333,54 @@ public class StreamHLSAndDASH {
     /**
      * Creates a StreamingLocator for the specified asset and with the specified streaming policy name.
      * Once the StreamingLocator is created the output asset is available to clients for playback.
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param assetName     The name of the output asset.
      * @param locatorName   The StreamingLocator name (unique in this case).
-     * @return              The locator created.
+     * @return The locator created.
      */
     private static StreamingLocator getStreamingLocator(MediaManager manager, String resourceGroup, String accountName,
-        String assetName, String locatorName) {
+                                                        String assetName, String locatorName) {
         // Note that we are using one of the PredefinedStreamingPolicies which tell the Origin component
         // of Azure Media Services how to publish the content for streaming.
         StreamingLocator locator = manager
-            .streamingLocators().define(locatorName)
-            .withExistingMediaservice(resourceGroup, accountName)
-            .withAssetName(assetName)
-            .withStreamingPolicyName("Predefined_ClearStreamingOnly")
-            .create();
+                .streamingLocators().define(locatorName)
+                .withExistingMediaservice(resourceGroup, accountName)
+                .withAssetName(assetName)
+                .withStreamingPolicyName("Predefined_ClearStreamingOnly")
+                .create();
 
         return locator;
     }
 
     /**
      * Checks if the streaming endpoint is in the running state, if not, starts it.
-     * @param manager       The entry point of Azure Media resource management.
-     * @param resourceGroup The name of the resource group within the Azure subscription.
-     * @param accountName   The Media Services account name.
-     * @param locatorName   The name of the StreamingLocator that was created.
-     * @param streamingEndpoint     The streaming endpoint.
-     * @return              List of streaming urls.
+     *
+     * @param manager           The entry point of Azure Media resource management.
+     * @param resourceGroup     The name of the resource group within the Azure subscription.
+     * @param accountName       The Media Services account name.
+     * @param locatorName       The name of the StreamingLocator that was created.
+     * @param streamingEndpoint The streaming endpoint.
+     * @return List of streaming urls.
      */
     private static List<String> getHlsAndDashStreamingUrls(MediaManager manager, String resourceGroup, String accountName,
-        String locatorName, StreamingEndpoint streamingEndpoint) {
+                                                           String locatorName, StreamingEndpoint streamingEndpoint) {
         List<String> streamingUrls = new ArrayList<>();
         ListPathsResponse paths = manager.streamingLocators().listPathsAsync(resourceGroup, accountName, locatorName)
-            .toBlocking().first();
-        
-        for (StreamingPath path: paths.streamingPaths()) {
+                .toBlocking().first();
+
+        for (StreamingPath path : paths.streamingPaths()) {
             StringBuilder uriBuilder = new StringBuilder();
             uriBuilder.append("https://")
-                .append(streamingEndpoint.hostName())
-                .append("/")
-                .append(path.paths().get(0));
+                    .append(streamingEndpoint.hostName())
+                    .append("/")
+                    .append(path.paths().get(0));
 
             if (path.streamingProtocol() == StreamingPolicyStreamingProtocol.HLS) {
                 streamingUrls.add("HLS url: " + uriBuilder.toString());
-            }
-            else if (path.streamingProtocol() == StreamingPolicyStreamingProtocol.DASH) {
+            } else if (path.streamingProtocol() == StreamingPolicyStreamingProtocol.DASH) {
                 streamingUrls.add("DASH url: " + uriBuilder.toString());
             }
         }
@@ -390,7 +388,8 @@ public class StreamHLSAndDASH {
     }
 
     /**
-     * Cleanup 
+     * Cleanup
+     *
      * @param manager               The entry point of Azure Media resource management.
      * @param resourceGroupName     The name of the resource group within the Azure subscription.
      * @param accountName           The Media Services account name.
@@ -403,7 +402,7 @@ public class StreamHLSAndDASH {
      * @param streamingEndpointName The endpoint name.
      */
     private static void cleanup(MediaManager manager, String resourceGroupName, String accountName, String transformName, String jobName,
-        String inputAssetName, String outputAssetName, String streamingLocatorName, boolean stopEndpoint, String streamingEndpointName) {
+                                String inputAssetName, String outputAssetName, String streamingLocatorName, boolean stopEndpoint, String streamingEndpointName) {
         if (manager == null) {
             return;
         }
@@ -415,8 +414,7 @@ public class StreamHLSAndDASH {
         if (stopEndpoint) {
             // Because we started the endpoint, we'll stop it.
             manager.streamingEndpoints().stopAsync(resourceGroupName, accountName, streamingEndpointName).await();
-        }
-        else {
+        } else {
             // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
             // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
             System.out.println("The endpoint '" + streamingEndpointName + "' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
@@ -425,24 +423,23 @@ public class StreamHLSAndDASH {
 
     /**
      * Creates a new input Asset and uploads the specified local video file into it.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
      * @param assetName         The name of the asset where the media file to uploaded to.
      * @param mediaFile         The path of a media file to be uploaded into the asset.
-     * @return                  The asset.
+     * @return The asset.
      */
     private static Asset createInputAsset(MediaManager manager, String resourceGroupName, String accountName,
-            String assetName, String mediaFile) throws Exception {
+                                          String assetName, String mediaFile) throws Exception {
         Asset asset;
         try {
             // In this example, we are assuming that the asset name is unique.
             // If you already have an asset with the desired name, use the Assets.getAsync method
             // to get the existing asset.
             asset = manager.assets().getAsync(resourceGroupName, accountName, assetName).toBlocking().first();
-        }
-        catch (NoSuchElementException nse) {
+        } catch (NoSuchElementException nse) {
             asset = null;
         }
 
@@ -452,13 +449,12 @@ public class StreamHLSAndDASH {
             // This method creates a container in storage for the Asset.
             // The files (blobs) associated with the asset will be stored in this container.
             asset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName).create();
-        }
-        else {
+        } else {
             // The asset already exists and we are going to overwrite it. In your application, if you don't want to overwrite
             // an existing asset, use an unique name.
             System.out.println("Warning: The asset named " + assetName + "already exists. It will be overwritten.");
         }
-        
+
         // Use Media Services API to get back a response that contains
         // SAS URL for the Asset container into which to upload blobs.
         // That is where you would specify read-write permissions
@@ -467,16 +463,18 @@ public class StreamHLSAndDASH {
                 .withPermissions(AssetContainerPermission.READ_WRITE).withExpiryTime(DateTime.now().plusHours(4));
         AssetContainerSas response = manager.assets()
                 .listContainerSasAsync(resourceGroupName, accountName, assetName, parameters).toBlocking().first();
-        URI sasUri = new URI(response.assetContainerSasUrls().get(0));
 
         // Use Storage API to get a reference to the Asset container
         // that was created by calling Asset's create method.
-        CloudBlobContainer container = new CloudBlobContainer(sasUri);
+        BlobContainerClient container =
+                new BlobContainerClientBuilder()
+                        .connectionString(response.assetContainerSasUrls().get(0))
+                        .buildClient();
 
         // Uploading from a local file:
         String fileToUpload = StreamHLSAndDASH.class.getClassLoader().getResource(mediaFile).getPath(); // The file is a resource in CLASSPATH.
         File file = new File(fileToUpload);
-        CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
+        BlobClient blob = container.getBlobClient(file.getName());
 
         // Use Storage API to upload the file into the container in storage.
         System.out.println("Uploading a media file to the asset...");

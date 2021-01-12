@@ -20,10 +20,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Callable;
 import java.util.Arrays;
 
+import com.azure.messaging.eventhubs.EventProcessorClient;
+import com.azure.messaging.eventhubs.EventProcessorClientBuilder;
+import com.azure.messaging.eventhubs.checkpointstore.blob.BlobCheckpointStore;
+import com.azure.storage.blob.*;
+import com.azure.storage.blob.models.ListBlobsOptions;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
-import com.microsoft.azure.eventprocessorhost.EventProcessorHost;
-import com.microsoft.azure.eventprocessorhost.EventProcessorOptions;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.Asset;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.AssetContainerPermission;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.AssetContainerSas;
@@ -40,16 +43,6 @@ import com.microsoft.azure.management.mediaservices.v2020_05_01.Transform;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.TransformOutput;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.VideoAnalyzerPreset;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
-import com.microsoft.azure.storage.ResultContinuation;
-import com.microsoft.azure.storage.ResultSegment;
-import com.microsoft.azure.storage.StorageException;
-import com.microsoft.azure.storage.blob.BlobListingDetails;
-import com.microsoft.azure.storage.blob.CloudBlobContainer;
-import com.microsoft.azure.storage.blob.CloudBlockBlob;
-import com.microsoft.azure.storage.blob.ListBlobItem;
-import com.microsoft.azure.storage.blob.CloudBlobClient;
-import com.microsoft.azure.storage.blob.CloudBlob;
-import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.rest.LogLevel;
 
 import org.joda.time.DateTime;
@@ -70,6 +63,7 @@ public class VideoAnalyzer {
 
     /**
      * Run the sample.
+     *
      * @param config This param is of type ConfigWrapper, which reads values from a
      *               local configuration file.
      */
@@ -92,7 +86,7 @@ public class VideoAnalyzer {
         String jobName = "job-" + uniqueness;
         String outputAssetName = "output-" + uniqueness;
         String inputAssetName = "input-" + uniqueness;
-
+        MediaServicesEventProcessor eventProcessorHost = null;
         Scanner scanner = new Scanner(System.in);
 
         try {
@@ -113,11 +107,10 @@ public class VideoAnalyzer {
                     outputAssetName);
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
-                videoAnalyzerTransform.name(), jobName, inputAssetName, outputAsset.name());
+                    videoAnalyzerTransform.name(), jobName, inputAssetName, outputAsset.name());
 
             long startedTime = System.currentTimeMillis();
-            
-            EventProcessorHost eventProcessorHost = null;
+
             try {
                 // First we will try to process Job events through Event Hub in real-time. If this fails for any reason,
                 // we will fall-back on polling Job status instead.
@@ -125,39 +118,30 @@ public class VideoAnalyzer {
                 System.out.println("Creating an event processor host to process events from Event Hub...");
 
                 String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
-                    config.getStorageAccountName() +
-                    ";AccountKey=" + config.getStorageAccountKey();
-                
+                        config.getStorageAccountName() +
+                        ";AccountKey=" + config.getStorageAccountKey() + ";EndpointSuffix=core.windows.net";
+
                 // Cleanup storage container. We will config Event Hub to use the storage container configured in appsettings.json.
                 // All the blobs in <The container configured in appsettings.json>/$Default will be deleted.
-                CloudStorageAccount account = CloudStorageAccount.parse(storageConnectionString);
-                CloudBlobClient client = account.createCloudBlobClient();
-                CloudBlobContainer container = client.getContainerReference(config.getStorageContainerName());
-                for (ListBlobItem item : container.listBlobs("$Default/", true)) {
-                    if (item instanceof CloudBlob) {
-                        CloudBlob blob = (CloudBlob) item;
-                        blob.delete();
-                    }
-                }
+                BlobServiceAsyncClient client = new BlobServiceClientBuilder()
+                        .connectionString(storageConnectionString)
+                        .buildAsyncClient();
+                BlobContainerAsyncClient container = client.getBlobContainerAsyncClient(config.getStorageContainerName());
+                container.listBlobs(
+                        new ListBlobsOptions().setPrefix("$Default/"))
+                        .subscribe(blobItem -> {
+                            container.getBlobAsyncClient(blobItem.getName()).delete();
+                        });
 
                 // Create a new host to process events from an Event Hub.
-                eventProcessorHost = new EventProcessorHost(
-                    EventProcessorHost.createHostName(null),
-                    config.getEventHubName(),
-                    "$Default",         // The name of the consumer group to use when receiving from the Event Hub. DefaultConsumerGroupName is used here.
-                    config.getEventHubConnectionString(),
-                    storageConnectionString,
-                    config.getStorageContainerName()
-                );
-
                 Object monitor = new Object();
-                CompletableFuture<Void> registerResult = eventProcessorHost
-                    .registerEventProcessorFactory(new MediaServicesEventProcessorFactory(jobName, monitor), EventProcessorOptions .getDefaultOptions());
-                registerResult.get();
+                eventProcessorHost = new MediaServicesEventProcessor(jobName, monitor, null,
+                        config.getEventHubConnectionString(), config.getEventHubName(),
+                        container);
 
                 // Define a task to wait for the job to finish.
                 Callable<String> jobTask = () -> {
-                    synchronized(monitor) {
+                    synchronized (monitor) {
                         monitor.wait();
                     }
                     return "Job";
@@ -176,10 +160,9 @@ public class VideoAnalyzer {
                 if (result.equalsIgnoreCase("Job")) {
                     // Job finished. Shutdown timeout.
                     executor.shutdownNow();
-                }
-                else {
+                } else {
                     // Timeout happened. Switch to polling method.
-                    synchronized(monitor) {
+                    synchronized (monitor) {
                         monitor.notify();
                     }
 
@@ -188,22 +171,18 @@ public class VideoAnalyzer {
 
                 // Get the latest status of the job.
                 job = manager.jobs().getAsync(config.getResourceGroup(), config.getAccountName(), VIDEO_ANALYZER_TRANSFORM_NAME, jobName).toBlocking().first();
-            }
-            catch (Exception e)
-            {
+            } catch (Exception e) {
                 // if Event Grid or Event Hub is not configured, We will fall-back on polling instead.
                 // Polling is not a recommended best practice for production applications because of the latency it introduces.
                 // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
                 job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
-                    VIDEO_ANALYZER_TRANSFORM_NAME, jobName);
-            }
-            finally {
-                if (eventProcessorHost != null)
-                {
+                        VIDEO_ANALYZER_TRANSFORM_NAME, jobName);
+            } finally {
+                if (eventProcessorHost != null) {
                     System.out.println("Job final state received, unregistering event processor...");
 
                     // Disposes of the Event Processor Host.
-                    eventProcessorHost.unregisterEventProcessor();
+                    eventProcessorHost.stop();
                     System.out.println();
                 }
             }
@@ -248,7 +227,7 @@ public class VideoAnalyzer {
      * If the specified transform exists, get that transform. If it does not
      * exist, creates a new transform with the specified output. In this case, the
      * output is set to encode a video using the encoding preset created earlier.
-     * 
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
@@ -257,7 +236,7 @@ public class VideoAnalyzer {
      * @return The transform found or created.
      */
     private static Transform getOrCreateTransform(MediaManager manager, String resourceGroup, String accountName,
-            String transformName, Preset preset) {
+                                                  String transformName, Preset preset) {
         Transform transform;
         try {
             // Does a Transform already exist with the desired name? Assume that an existing
@@ -266,7 +245,7 @@ public class VideoAnalyzer {
         } catch (NoSuchElementException e) {
             transform = null; // In case an exception is thrown
         }
-        
+
         if (transform == null) {
             TransformOutput transformOutput = new TransformOutput().withPreset(preset);
             List<TransformOutput> outputs = new ArrayList<TransformOutput>();
@@ -275,9 +254,9 @@ public class VideoAnalyzer {
             // Create the Transform with the outputs defined above
             System.out.println("Creating a transform...");
             transform = manager.transforms().define(transformName)
-                .withExistingMediaservice(resourceGroup, accountName)
-                .withOutputs(outputs)
-                .create();
+                    .withExistingMediaservice(resourceGroup, accountName)
+                    .withOutputs(outputs)
+                    .create();
         }
 
         return transform;
@@ -285,16 +264,16 @@ public class VideoAnalyzer {
 
     /**
      * Creates a new input Asset and uploads the specified local video file into it.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
      * @param assetName         The asset name.
-     * @param InputMP4FileName  The file you want to upload into the asset.
+     * @param videoResource     The file you want to upload into the asset.
      * @return The asset.
      */
     private static Asset createInputAsset(MediaManager manager, String resourceGroupName, String accountName,
-            String assetName, String videoResource) throws Exception {
+                                          String assetName, String videoResource) throws Exception {
         // In this example, we are assuming that the asset name is unique.
         // Call Media Services API to create an Asset.
         // This method creates a container in storage for the Asset.
@@ -313,15 +292,16 @@ public class VideoAnalyzer {
         AssetContainerSas response = manager.assets()
                 .listContainerSasAsync(resourceGroupName, accountName, assetName, parameters).toBlocking().first();
 
-        URI sasUri = new URI(response.assetContainerSasUrls().get(0));
-
         // Use Storage API to get a reference to the Asset container.
         // That was created by calling Asset's create() method.
-        CloudBlobContainer container = new CloudBlobContainer(sasUri);
+        BlobContainerAsyncClient container =
+                new BlobContainerClientBuilder()
+                        .connectionString(response.assetContainerSasUrls().get(0))
+                        .buildAsyncClient();
 
         String fileToUpload = VideoAnalyzer.class.getClassLoader().getResource(videoResource).getPath();
         File file = new File(fileToUpload);
-        CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
+        BlobAsyncClient blob = container.getBlobAsyncClient(file.getName());
 
         // Use Storage API to upload the file into the container in storage.
         System.out.println("Uploading a media file to the asset...");
@@ -333,7 +313,7 @@ public class VideoAnalyzer {
     /**
      * Creates an output asset. The output from the encoding Job must be written to
      * an Asset.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource
      *                          management.
      * @param resourceGroupName The name of the resource group within the Azure
@@ -343,7 +323,7 @@ public class VideoAnalyzer {
      * @return
      */
     private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
-            String assetName) {
+                                           String assetName) {
         // In this example, we are assuming that the asset name is unique.
         System.out.println("Creating an output asset...");
         Asset outputAsset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
@@ -355,7 +335,7 @@ public class VideoAnalyzer {
     /**
      * Submits a request to Media Services to apply the specified Transform to a
      * given input video.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource
      *                          management.
      * @param resourceGroupName The name of the resource group within the Azure
@@ -369,7 +349,7 @@ public class VideoAnalyzer {
      * @return The job created
      */
     private static Job submitJob(MediaManager manager, String resourceGroupName, String accountName,
-            String transformName, String jobName, String inputAssetName, String outputAssetName) {
+                                 String transformName, String jobName, String inputAssetName, String outputAssetName) {
         JobInput jobInput = new JobInputAsset().withAssetName(inputAssetName);
 
         // Call Media Services API to create a JobOutput and add it to a list.
@@ -380,17 +360,17 @@ public class VideoAnalyzer {
         // Call Media Services API to create the job.
         System.out.println("Creating a job...");
         Job job = manager.jobs().define(jobName)
-            .withExistingTransform(resourceGroupName, accountName, transformName)
-            .withInput(jobInput)
-            .withOutputs(jobOutputs)
-            .create();
+                .withExistingTransform(resourceGroupName, accountName, transformName)
+                .withInput(jobInput)
+                .withOutputs(jobOutputs)
+                .create();
 
         return job;
     }
 
     /**
      * Polls Media Services for the status of the Job.
-     * 
+     *
      * @param manager       This is the entry point of Azure Media resource
      *                      management.
      * @param resourceGroup The name of the resource group within the Azure
@@ -398,10 +378,10 @@ public class VideoAnalyzer {
      * @param accountName   The Media Services account name.
      * @param transformName The name of the transform.
      * @param jobName       The name of the job you submitted.
-     * @return              The job object.
+     * @return The job object.
      */
     private static Job waitForJobToFinish(MediaManager manager, String resourceGroup, String accountName,
-            String transformName, String jobName) {
+                                          String transformName, String jobName) {
         final int SLEEP_INTERVAL = 60 * 1000;   // 1 minute.
 
         Job job = null;
@@ -437,31 +417,32 @@ public class VideoAnalyzer {
 
     /**
      * Downloads the results from the specified output asset, so you can see what you get.
-     * 
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param assetName     The output asset.
      * @param outputFolder  The name of the folder into which to download the results.
      * @throws URISyntaxException
-     * @throws StorageException
      * @throws IOException
      */
     private static void downloadOutputAsset(MediaManager manager, String resourceGroup, String accountName,
-            String assetName, File outputFolder) throws URISyntaxException, StorageException, IOException {
+                                            String assetName, File outputFolder) throws URISyntaxException, IOException {
         // Specify read permission and 1 hour expiration time for the SAS URL.
         ListContainerSasInput parameters = new ListContainerSasInput()
-            .withPermissions(AssetContainerPermission.READ)
-            .withExpiryTime(DateTime.now().plusHours(1));
+                .withPermissions(AssetContainerPermission.READ)
+                .withExpiryTime(DateTime.now().plusHours(1));
 
         // Call Media Services API to get SAS URLs.
         AssetContainerSas assetContainerSas = manager.assets()
-            .listContainerSasAsync(resourceGroup, accountName, assetName, parameters)
-            .toBlocking().first();
+                .listContainerSasAsync(resourceGroup, accountName, assetName, parameters)
+                .toBlocking().first();
 
         // Use Storage API to get a reference to the Asset container.
-        URI containerSasUrl = new URI(assetContainerSas.assetContainerSasUrls().get(0));
-        CloudBlobContainer container = new CloudBlobContainer(containerSasUrl);
+        BlobContainerClient container =
+                new BlobContainerClientBuilder()
+                        .connectionString(assetContainerSas.assetContainerSasUrls().get(0))
+                        .buildClient();
 
         File directory = new File(outputFolder, assetName);
         directory.mkdirs();
@@ -470,28 +451,11 @@ public class VideoAnalyzer {
         System.out.println();
 
         // A continuation token for listing operations. Continuation tokens are used in methods that return a ResultSegment object.
-        ResultContinuation continuationToken = null;
-
-        do {
-            // A non-negative integer value that indicates the maximum number of results to be returned at a time,
-            // up to the per-operation limit of 5000. If this value is null, the maximum possible number of results
-            // will be returned, up to 5000.
-            Integer LIST_BLOBS_SEGMENT_MAX_RESULT = null;
-            ResultSegment<ListBlobItem> segment = container.listBlobsSegmented(null, true,
-                    EnumSet.noneOf(BlobListingDetails.class), LIST_BLOBS_SEGMENT_MAX_RESULT, continuationToken, null,
-                    null);
-
-            for (ListBlobItem blobItem : segment.getResults()) {
-                if (blobItem instanceof CloudBlockBlob) {
-                    CloudBlockBlob blob = (CloudBlockBlob) blobItem;
-                    File downloadTo = new File(directory, blob.getName());
-
-                    // Use Storage API to download the file.
-                    blob.downloadToFile(downloadTo.getPath());
-                }
-            }
-            continuationToken = segment.getContinuationToken();
-        } while (continuationToken != null);
+        container.listBlobs().forEach(blobItem -> {
+            BlobClient blob = container.getBlobClient(blobItem.getName());
+            File downloadTo = new File(directory, blobItem.getName());
+            blob.downloadToFile(downloadTo.getAbsolutePath());
+        });
 
         System.out.println("Downloading completed.");
         System.out.println("Please check the result files in " + directory.getPath() + ".");
@@ -500,7 +464,7 @@ public class VideoAnalyzer {
 
     /**
      * Cleanup
-     * 
+     *
      * @param manager           The entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
@@ -510,7 +474,7 @@ public class VideoAnalyzer {
      * @param outputAssetName   The output asset name.
      */
     private static void cleanup(MediaManager manager, String resourceGroupName, String accountName,
-            String transformName, String jobName, String inputAssetName, String outputAssetName) {
+                                String transformName, String jobName, String inputAssetName, String outputAssetName) {
         if (manager == null) {
             return;
         }

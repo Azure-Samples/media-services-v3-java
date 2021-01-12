@@ -21,13 +21,18 @@ import java.util.Arrays;
 
 import javax.crypto.SecretKey;
 
+import com.azure.messaging.eventhubs.EventProcessorClient;
+import com.azure.messaging.eventhubs.EventProcessorClientBuilder;
+import com.azure.messaging.eventhubs.checkpointstore.blob.BlobCheckpointStore;
+import com.azure.storage.blob.BlobContainerAsyncClient;
+import com.azure.storage.blob.BlobServiceAsyncClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
+import com.azure.storage.blob.models.ListBlobsOptions;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
-import com.microsoft.azure.eventprocessorhost.EventProcessorHost;
-import com.microsoft.azure.eventprocessorhost.EventProcessorOptions;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.ApiErrorException;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.Asset;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.BuiltInStandardEncoderPreset;
@@ -58,11 +63,6 @@ import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPolicyS
 import com.microsoft.azure.management.mediaservices.v2020_05_01.Transform;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.TransformOutput;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
-import com.microsoft.azure.storage.blob.CloudBlobContainer;
-import com.microsoft.azure.storage.blob.ListBlobItem;
-import com.microsoft.azure.storage.blob.CloudBlobClient;
-import com.microsoft.azure.storage.blob.CloudBlob;
-import com.microsoft.azure.storage.CloudStorageAccount;
 
 import org.apache.commons.codec.binary.Base64;
 
@@ -99,7 +99,7 @@ public class BasicWidevine {
 
     /**
      * Run the sample.
-     * 
+     *
      * @param config This param is of type ConfigWrapper, which reads values from
      *               local configuration file.
      */
@@ -122,7 +122,7 @@ public class BasicWidevine {
         String jobName = "job-" + uniqueness;
         String outputAssetName = "output-" + uniqueness;
         String locatorName = "locator-" + uniqueness;
-        EventProcessorHost eventProcessorHost = null;
+        MediaServicesEventProcessor eventProcessorHost = null;
         boolean stopEndpoint = false;
 
         Scanner scanner = new Scanner(System.in);
@@ -131,14 +131,14 @@ public class BasicWidevine {
             // Ensure that you have the desired encoding Transform. This is really a one
             // time setup operation.
             Transform transform = getOrCreateTransform(manager, config.getResourceGroup(), config.getAccountName(),
-                ADAPTIVE_STREAMING_TRANSFORM_NAME);
+                    ADAPTIVE_STREAMING_TRANSFORM_NAME);
 
             // Output from the encoding Job must be written to an Asset, so let's create one
             Asset outputAsset = createOutputAsset(manager, config.getResourceGroup(), config.getAccountName(),
-                outputAssetName);
+                    outputAssetName);
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
-                transform.name(), outputAsset.name(), jobName);
+                    transform.name(), outputAsset.name(), jobName);
 
             long startedTime = System.currentTimeMillis();
 
@@ -149,39 +149,30 @@ public class BasicWidevine {
                 System.out.println("Creating a new host to process events from Event Hub...");
 
                 String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
-                    config.getStorageAccountName() +
-                    ";AccountKey=" + config.getStorageAccountKey();
-                
+                        config.getStorageAccountName() +
+                        ";AccountKey=" + config.getStorageAccountKey() + ";EndpointSuffix=core.windows.net";
+
                 // Cleanup storage container. We will config Event Hub to use the storage container configured in appsettings.json.
                 // All the blobs in <The container configured in appsettings.json>/$Default will be deleted.
-                CloudStorageAccount account = CloudStorageAccount.parse(storageConnectionString);
-                CloudBlobClient client = account.createCloudBlobClient();
-                CloudBlobContainer container = client.getContainerReference(config.getStorageContainerName());
-                for (ListBlobItem item : container.listBlobs("$Default/", true)) {
-                    if (item instanceof CloudBlob) {
-                        CloudBlob blob = (CloudBlob) item;
-                        blob.delete();
-                    }
-                }
+                BlobServiceAsyncClient client = new BlobServiceClientBuilder()
+                        .connectionString(storageConnectionString)
+                        .buildAsyncClient();
+                BlobContainerAsyncClient container = client.getBlobContainerAsyncClient(config.getStorageContainerName());
+                container.listBlobs(
+                        new ListBlobsOptions().setPrefix("$Default/"))
+                        .subscribe(blobItem -> {
+                            container.getBlobAsyncClient(blobItem.getName()).delete();
+                        });
 
                 // Create a new host to process events from an Event Hub.
-                eventProcessorHost = new EventProcessorHost(
-                    EventProcessorHost.createHostName(null),
-                    config.getEventHubName(),
-                    "$Default",         // The name of the consumer group to use when receiving from the Event Hub. DefaultConsumerGroupName is used here.
-                    config.getEventHubConnectionString(),
-                    storageConnectionString,
-                    config.getStorageContainerName()
-                );
-
                 Object monitor = new Object();
-                CompletableFuture<Void> registerResult = eventProcessorHost
-                    .registerEventProcessorFactory(new MediaServicesEventProcessorFactory(jobName, monitor), EventProcessorOptions .getDefaultOptions());
-                registerResult.get();
+                eventProcessorHost = new MediaServicesEventProcessor(jobName, monitor, null,
+                        config.getEventHubConnectionString(), config.getEventHubName(),
+                        container);
 
                 // Define a task to wait for the job to finish.
                 Callable<String> jobTask = () -> {
-                    synchronized(monitor) {
+                    synchronized (monitor) {
                         monitor.wait();
                     }
                     return "Job";
@@ -200,10 +191,9 @@ public class BasicWidevine {
                 if (result.equalsIgnoreCase("Job")) {
                     // Job finished. Shutdown timeout.
                     executor.shutdownNow();
-                }
-                else {
+                } else {
                     // Timeout happened. Switch to polling method.
-                    synchronized(monitor) {
+                    synchronized (monitor) {
                         monitor.notify();
                     }
 
@@ -212,16 +202,14 @@ public class BasicWidevine {
 
                 // Get the latest status of the job.
                 job = manager.jobs().getAsync(config.getResourceGroup(), config.getAccountName(), transform.name(), jobName).toBlocking().first();
-            }
-            catch (Exception e)
-            {
+            } catch (Exception e) {
                 System.out.println("Warning: Failed to connect to Event Hub, please refer README for Event Hub and storage settings.");
                 // if Event Grid or Event Hub is not configured, We will fall-back on polling instead.
                 // Polling is not a recommended best practice for production applications because of the latency it introduces.
                 // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
                 System.out.println("Failed to start Event Grid monitoring, will use polling job status instead...");
                 job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
-                    transform.name(), jobName);
+                        transform.name(), jobName);
             }
 
             long elapsed = (System.currentTimeMillis() - startedTime) / 1000; // Elapsed time in seconds
@@ -238,33 +226,33 @@ public class BasicWidevine {
                 // the identifier of the content key in it.
                 System.out.println("Creating a content key policy...");
                 ContentKeyPolicy policy = ensureContentKeyPolicyExists(manager, config.getResourceGroup(),
-                    config.getAccountName(), CONTENT_KEY_POLICY_NAME);
+                        config.getAccountName(), CONTENT_KEY_POLICY_NAME);
 
                 StreamingLocator locator = manager.streamingLocators().define(locatorName)
-                    .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
-                    .withAssetName(outputAssetName)
-                    .withStreamingPolicyName(MULTI_DRM_CENC_STREAMING)
-                    .withDefaultContentKeyPolicyName(policy.name())
-                    .create();
+                        .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                        .withAssetName(outputAssetName)
+                        .withStreamingPolicyName(MULTI_DRM_CENC_STREAMING)
+                        .withDefaultContentKeyPolicyName(policy.name())
+                        .create();
 
                 String keyIdentifier = null;
                 List<StreamingLocatorContentKey> keys = locator.contentKeys()
-                    .stream()
-                    .filter(k -> k.type() == StreamingLocatorContentKeyType.COMMON_ENCRYPTION_CENC)
-                    .collect(Collectors.toList());
+                        .stream()
+                        .filter(k -> k.type() == StreamingLocatorContentKeyType.COMMON_ENCRYPTION_CENC)
+                        .collect(Collectors.toList());
                 if (keys.size() > 0) {
                     keyIdentifier = keys.get(0).id().toString();
                 }
 
                 System.out.println("KeyIdentifier = " + keyIdentifier);
-                
+
                 // In order to generate our test token we must get the ContentKeyId to put in the ContentKeyIdentifierClaim claim.
                 String token = createToken(ISSUER, AUDIENCE, keyIdentifier, TOKEN_SIGNING_KEY);
 
                 StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-                    .getAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME)
-                    .toBlocking().first();
-    
+                        .getAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME)
+                        .toBlocking().first();
+
                 if (streamingEndpoint != null) {
                     // Start The Streaming Endpoint if it is not running.
                     if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
@@ -274,7 +262,7 @@ public class BasicWidevine {
                         // We started the endpoint, we should stop it in cleanup.
                         stopEndpoint = true;
                     }
-    
+
                     String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
 
                     System.out.println();
@@ -283,8 +271,7 @@ public class BasicWidevine {
                     System.out.println();
                     System.out.println("https://ampdemo.azureedge.net/?url=" + dashPath + "&widevine=true&token=Bearer%3D" + token);
                     System.out.println();
-                }
-                else {
+                } else {
                     System.out.println("Could not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
                 }
 
@@ -298,8 +285,7 @@ public class BasicWidevine {
                 if (cause instanceof AuthenticationException) {
                     System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
                     break;
-                }
-                else if (cause instanceof ApiErrorException) {
+                } else if (cause instanceof ApiErrorException) {
                     ApiErrorException apiException = (ApiErrorException) cause;
                     System.out.println("ERROR: " + apiException.body().error().message());
                     break;
@@ -313,18 +299,17 @@ public class BasicWidevine {
             System.out.println("Cleaning up...");
 
             cleanup(manager, config.getResourceGroup(), config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName,
-                outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME, stopEndpoint, DEFAULT_STREAMING_ENDPOINT_NAME);
-            
+                    outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME, stopEndpoint, DEFAULT_STREAMING_ENDPOINT_NAME);
+
             if (scanner != null) {
                 scanner.close();
             }
 
-            if (eventProcessorHost != null)
-            {
+            if (eventProcessorHost != null) {
                 System.out.println("Unregistering event processor...");
 
                 // Disposes of the Event Processor Host.
-                eventProcessorHost.unregisterEventProcessor();
+                eventProcessorHost.stop();
                 System.out.println();
             }
         }
@@ -334,7 +319,7 @@ public class BasicWidevine {
      * If the specified transform exists, get that transform. If the it does not
      * exist, creates a new transform with the specified output. In this case, the
      * output is set to encode a video using one of the built-in encoding presets.
-     * 
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
@@ -342,7 +327,7 @@ public class BasicWidevine {
      * @return The transform found or created.
      */
     private static Transform getOrCreateTransform(MediaManager manager, String resourceGroup, String accountName,
-            String transformName) {
+                                                  String transformName) {
         Transform transform;
         try {
             // Does a Transform already exist with the desired name? Assume that an existing
@@ -372,15 +357,15 @@ public class BasicWidevine {
     /**
      * Creates an output asset. The output from the encoding Job must be written to
      * an Asset.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
      * @param assetName         The output asset name.
-     * @return                  The output asset created.
+     * @return The output asset created.
      */
     private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
-            String assetName) {
+                                           String assetName) {
         // We are assuming the asset name is unique.
         System.out.println("Creating an output asset...");
         Asset outputAsset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
@@ -392,7 +377,7 @@ public class BasicWidevine {
     /**
      * Submits a request to Media Services to apply the specified Transform to a
      * given input video.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
@@ -403,7 +388,7 @@ public class BasicWidevine {
      * @return The job created.
      */
     private static Job submitJob(MediaManager manager, String resourceGroupName, String accountName,
-            String transformName, String outputAssetName, String jobName) {
+                                 String transformName, String outputAssetName, String jobName) {
         // This example shows how to encode from any HTTPs source URL - a new feature of the v3 API.
         // Change the URL to any accessible HTTPs URL or SAS URL from Azure.
         List<String> files = new ArrayList<>();
@@ -428,16 +413,16 @@ public class BasicWidevine {
 
     /**
      * Polls Media Services for the status of the Job.
-     * 
+     *
      * @param manager       This is the entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param transformName The name of the transform.
      * @param jobName       The name of the job you submitted.
-     * @return              The job.
+     * @return The job.
      */
     private static Job waitForJobToFinish(MediaManager manager, String resourceGroup, String accountName,
-            String transformName, String jobName) {
+                                          String transformName, String jobName) {
         final int SLEEP_INTERVAL = 60 * 1000;
 
         Job job = null;
@@ -474,7 +459,7 @@ public class BasicWidevine {
     /**
      * Create the content key policy that configures how the content key is delivered
      * to end clients via the Key Delivery component of Azure Media Services.
-     * 
+     *
      * @param manager              The entry point of Azure Media resource management.
      * @param resourceGroup        The name of the resource group within the Azure subscription.
      * @param accountName          The Media Services account name.
@@ -483,7 +468,7 @@ public class BasicWidevine {
      * @throws JsonProcessingException
      */
     private static ContentKeyPolicy ensureContentKeyPolicyExists(MediaManager manager, String resourceGroup,
-            String accountName, String contentKeyPolicyName) throws JsonProcessingException {
+                                                                 String accountName, String contentKeyPolicyName) throws JsonProcessingException {
         ContentKeyPolicy policy;
         try {
             // Get the policy if exists.
@@ -524,33 +509,32 @@ public class BasicWidevine {
             // RequiredClaims:
             //   A list of required token claims.
             ContentKeyPolicyTokenRestriction restriction = new ContentKeyPolicyTokenRestriction()
-                .withIssuer(ISSUER)
-                .withAudience(AUDIENCE)
-                .withPrimaryVerificationKey(primaryKey)
-                .withRestrictionTokenType(ContentKeyPolicyRestrictionTokenType.JWT)
-                .withAlternateVerificationKeys(alternateKeys)
-                .withRequiredClaims(requiredClaims);
+                    .withIssuer(ISSUER)
+                    .withAudience(AUDIENCE)
+                    .withPrimaryVerificationKey(primaryKey)
+                    .withRestrictionTokenType(ContentKeyPolicyRestrictionTokenType.JWT)
+                    .withAlternateVerificationKeys(alternateKeys)
+                    .withRequiredClaims(requiredClaims);
 
             // Create a configuration for Widevine licenses.
             ContentKeyPolicyWidevineConfiguration widevineConfig = configureWidevineLicenseTemplate();
 
             List<ContentKeyPolicyOption> options = new ArrayList<>();
             options.add(new ContentKeyPolicyOption()
-                .withConfiguration(widevineConfig)
-                .withRestriction(restriction));
+                    .withConfiguration(widevineConfig)
+                    .withRestriction(restriction));
 
             // Content Key Policy does not exist, create one.
             policy = manager.contentKeyPolicies().define(contentKeyPolicyName)
                     .withExistingMediaservice(resourceGroup, accountName).withOptions(options).create();
-        }
-        else {
+        } else {
             // Get the signing key from the existing policy.
-            ContentKeyPolicyProperties policyProperties =  manager.contentKeyPolicies()
-                .getPolicyPropertiesWithSecretsAsync(resourceGroup, accountName, contentKeyPolicyName).toBlocking().first();
+            ContentKeyPolicyProperties policyProperties = manager.contentKeyPolicies()
+                    .getPolicyPropertiesWithSecretsAsync(resourceGroup, accountName, contentKeyPolicyName).toBlocking().first();
             ContentKeyPolicyRestriction restriction = policyProperties.options().get(0).restriction();
             if (restriction != null && restriction instanceof ContentKeyPolicyTokenRestriction) {
-                ContentKeyPolicyTokenRestriction contentKeyPolicyTokenRestriction = (ContentKeyPolicyTokenRestriction)restriction;
-                ContentKeyPolicySymmetricTokenKey signingKey = (ContentKeyPolicySymmetricTokenKey)contentKeyPolicyTokenRestriction.primaryVerificationKey();
+                ContentKeyPolicyTokenRestriction contentKeyPolicyTokenRestriction = (ContentKeyPolicyTokenRestriction) restriction;
+                ContentKeyPolicySymmetricTokenKey signingKey = (ContentKeyPolicySymmetricTokenKey) contentKeyPolicyTokenRestriction.primaryVerificationKey();
                 if (signingKey != null) {
                     TOKEN_SIGNING_KEY = signingKey.keyValue();
                 }
@@ -562,7 +546,7 @@ public class BasicWidevine {
 
     /**
      * Configures Widevine license template.
-     * 
+     *
      * @return ContentKeyPolicyWidevineConfiguration
      * @throws JsonProcessingException
      */
@@ -595,7 +579,7 @@ public class BasicWidevine {
         ObjectMapper mapper = new ObjectMapper();
         String strTemplate = mapper.writeValueAsString(template);
         ContentKeyPolicyWidevineConfiguration objContentKeyPolicyWidevineConfiguration = new ContentKeyPolicyWidevineConfiguration()
-            .withWidevineTemplate(strTemplate);
+                .withWidevineTemplate(strTemplate);
 
         return objContentKeyPolicyWidevineConfiguration;
     }
@@ -603,26 +587,27 @@ public class BasicWidevine {
     /**
      * Create a token that will be used to protect your stream.
      * Only authorized clients would be able to play the video.
-     * @param issuer                The issuer is the secure token service that issues the token.
-     * @param audience              The audience, sometimes called scope, describes the intent of the token or the resource the token authorizes access to.
-     * @param keyIdentifier         The content key ID.
-     * @param tokenVerificationKey  Contains the key that the token was signed with.
-     * @return                      The token.
+     *
+     * @param issuer               The issuer is the secure token service that issues the token.
+     * @param audience             The audience, sometimes called scope, describes the intent of the token or the resource the token authorizes access to.
+     * @param keyIdentifier        The content key ID.
+     * @param tokenVerificationKey Contains the key that the token was signed with.
+     * @return The token.
      * @throws JwtException
      */
     private static String createToken(String issuer, String audience, String keyIdentifier,
-        byte[] tokenVerificationKey) throws JwtException{
-        
+                                      byte[] tokenVerificationKey) throws JwtException {
+
         String jws = null;
         SecretKey key = Keys.hmacShaKeyFor(tokenVerificationKey);
 
         JwtBuilder builder = Jwts.builder()
-            .setIssuer(issuer)
-            .setAudience(audience)
-            .claim(CONTENT_KEY_IDENTIFIER_CLAIM, keyIdentifier)
-            .setNotBefore(Date.from(LocalDateTime.now().minusMinutes(5).atZone(ZoneId.systemDefault()).toInstant()))
-            .setExpiration(Date.from(LocalDateTime.now().plusMinutes(60).atZone(ZoneId.systemDefault()).toInstant()))
-            .signWith(key, SignatureAlgorithm.HS256);
+                .setIssuer(issuer)
+                .setAudience(audience)
+                .claim(CONTENT_KEY_IDENTIFIER_CLAIM, keyIdentifier)
+                .setNotBefore(Date.from(LocalDateTime.now().minusMinutes(5).atZone(ZoneId.systemDefault()).toInstant()))
+                .setExpiration(Date.from(LocalDateTime.now().plusMinutes(60).atZone(ZoneId.systemDefault()).toInstant()))
+                .signWith(key, SignatureAlgorithm.HS256);
 
         jws = builder.compact();
 
@@ -632,21 +617,22 @@ public class BasicWidevine {
     /**
      * Checks if the streaming endpoint is in the running state, if not, starts it.
      * Then, builds the streaming URLs.
-     * @param manager               The entry point of Azure Media resource management
-     * @param resourceGroup         The name of the resource group within the Azure subscription
-     * @param accountName           The Media Services account name
-     * @param locatorName           The name of the StreamingLocator that was created
-     * @return                      The DASH streaming url.
+     *
+     * @param manager       The entry point of Azure Media resource management
+     * @param resourceGroup The name of the resource group within the Azure subscription
+     * @param accountName   The Media Services account name
+     * @param locatorName   The name of the StreamingLocator that was created
+     * @return The DASH streaming url.
      */
     private static String getDASHStreamingUrl(MediaManager manager, String resourceGroup, String accountName,
-        String locatorName, StreamingEndpoint streamingEndpoint) {
+                                              String locatorName, StreamingEndpoint streamingEndpoint) {
         String dashPath = "";
 
         ListPathsResponse paths = manager.streamingLocators()
-            .listPathsAsync(resourceGroup, accountName, locatorName)
-            .toBlocking().first();
+                .listPathsAsync(resourceGroup, accountName, locatorName)
+                .toBlocking().first();
 
-        for (StreamingPath path: paths.streamingPaths()) {
+        for (StreamingPath path : paths.streamingPaths()) {
             if (path.paths().size() > 0) {
                 StringBuilder uriBuilder = new StringBuilder();
                 uriBuilder.append("https://").append(streamingEndpoint.hostName());
@@ -667,6 +653,7 @@ public class BasicWidevine {
      * Deletes the jobs and assets that were created.
      * Generally, you should clean up everything except objects
      * that you are planning to reuse (typically, you will reuse Transforms, and you will persist StreamingLocators).
+     *
      * @param manager               The entry point of Azure Media resource management.
      * @param resourceGroup         The name of the resource group within the Azure subscription.
      * @param accountName           The Media Services account name.
@@ -679,7 +666,7 @@ public class BasicWidevine {
      * @param streamingEndpointName The endpoint name.
      */
     public static void cleanup(MediaManager manager, String resourceGroup, String accountName, String transformName, String jobName,
-        String assetName, String locatorName, String contentKeyPolicyName, boolean stopEndpoint, String streamingEndpointName) {
+                               String assetName, String locatorName, String contentKeyPolicyName, boolean stopEndpoint, String streamingEndpointName) {
         if (manager == null) {
             return;
         }

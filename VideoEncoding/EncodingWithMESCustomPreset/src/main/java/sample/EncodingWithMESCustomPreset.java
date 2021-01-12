@@ -15,6 +15,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobContainerClientBuilder;
 import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
@@ -50,13 +53,6 @@ import com.microsoft.azure.management.mediaservices.v2020_05_01.Transform;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.TransformOutput;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.ApiErrorException;
-import com.microsoft.azure.storage.ResultContinuation;
-import com.microsoft.azure.storage.ResultSegment;
-import com.microsoft.azure.storage.StorageException;
-import com.microsoft.azure.storage.blob.BlobListingDetails;
-import com.microsoft.azure.storage.blob.CloudBlobContainer;
-import com.microsoft.azure.storage.blob.CloudBlockBlob;
-import com.microsoft.azure.storage.blob.ListBlobItem;
 import com.microsoft.rest.LogLevel;
 
 import org.joda.time.DateTime;
@@ -81,6 +77,7 @@ public class EncodingWithMESCustomPreset {
 
     /**
      * Run the sample.
+     *
      * @param config The param is of type ConfigWrapper. This class reads values from local configuration file.
      */
     private static void runEncodingWithMESCustomPreset(ConfigWrapper config) {
@@ -114,14 +111,14 @@ public class EncodingWithMESCustomPreset {
 
             // Create a new input Asset and upload the specified local video file into it.
             Asset asset = createInputAsset(manager, config.getResourceGroup(), config.getAccountName(), inputAssetName,
-                INPUT_MP4_RESOURCE);
+                    INPUT_MP4_RESOURCE);
 
             // Output from the encoding Job must be written to an Asset, so let's create one
             Asset outputAsset = createOutputAsset(manager, config.getResourceGroup(), config.getAccountName(),
                     outputAssetName);
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
-                transform.name(), jobName, asset.name(), outputAsset.name());
+                    transform.name(), jobName, asset.name(), outputAsset.name());
 
             // In this demo code, we will poll for Job status. Polling is not a recommended best practice for production
             // applications because of the latency it introduces. Overuse of this API may trigger throttling. Developers
@@ -129,7 +126,7 @@ public class EncodingWithMESCustomPreset {
             // https://github.com/Azure-Samples/media-services-v3-java/tree/master/ContentProtection/BasicAESClearKey.
             System.out.println();
             job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
-                transform.name(), jobName);
+                    transform.name(), jobName);
 
             if (job.state() == JobState.FINISHED) {
                 System.out.println("Job finished.");
@@ -154,9 +151,9 @@ public class EncodingWithMESCustomPreset {
                 StreamingLocator locator = createStreamingLocator(manager, config.getResourceGroup(), config.getAccountName(), outputAsset.name(), locatorName);
 
                 StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-                    .getAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME)
-                    .toBlocking().first();
-    
+                        .getAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME)
+                        .toBlocking().first();
+
                 if (streamingEndpoint != null) {
                     // Start The Streaming Endpoint if it is not running.
                     if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
@@ -171,7 +168,7 @@ public class EncodingWithMESCustomPreset {
 
                 System.out.println();
                 System.out.println("Streaming urls:");
-                for (String url: urls) {
+                for (String url : urls) {
                     System.out.println(url);
                 }
             }
@@ -187,8 +184,7 @@ public class EncodingWithMESCustomPreset {
                 if (cause instanceof AuthenticationException) {
                     System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
                     break;
-                }
-                else if (cause instanceof ApiErrorException) {
+                } else if (cause instanceof ApiErrorException) {
                     ApiErrorException apiException = (ApiErrorException) cause;
                     System.out.println("ERROR: " + apiException.body().error().message());
                     break;
@@ -205,8 +201,8 @@ public class EncodingWithMESCustomPreset {
             }
 
             cleanup(manager, config.getResourceGroup(), config.getAccountName(), CUSTOM_TWO_LAYER_MP4_PNG, jobName, inputAssetName,
-                outputAssetName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
-            
+                    outputAssetName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
+
             System.out.println("Done.");
         }
     }
@@ -215,23 +211,22 @@ public class EncodingWithMESCustomPreset {
      * If the specified transform exists, return that transform. If the it does not
      * exist, creates a new transform with the specified output. In this case, the
      * output is set to encode a video using a custom preset.
-     * 
+     *
      * @param manager       This is the entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param transformName The name of the transform.
-     * @return              The transform found or created.
+     * @return The transform found or created.
      */
     private static Transform createCustomTransform(MediaManager manager, String resourceGroup, String accountName,
-            String transformName) {
+                                                   String transformName) {
         Transform transform;
         try {
             // Does a transform already exist with the desired name? Assume that an existing Transform with the desired name
             // also uses the same recipe or preset for processing content.
             transform = manager.transforms().getAsync(resourceGroup, accountName, transformName)
-                .toBlocking().first();
-        }
-        catch (NoSuchElementException e) {
+                    .toBlocking().first();
+        } catch (NoSuchElementException e) {
             transform = null;
         }
 
@@ -239,7 +234,7 @@ public class EncodingWithMESCustomPreset {
             System.out.println("Creating a custom transform...");
             // Create a new Transform Outputs List - this defines the set of outputs for the Transform
             List<TransformOutput> outputs = new ArrayList<>();
-            
+
             // Create a new TransformOutput with a custom Standard Encoder Preset
             // This demonstrates how to create custom codec and layer output settings
             TransformOutput transformOutput = new TransformOutput();
@@ -250,8 +245,8 @@ public class EncodingWithMESCustomPreset {
             // Create a customer preset and add it to transform output
             StandardEncoderPreset preset = new StandardEncoderPreset();
             transformOutput.withPreset(preset)
-                .withOnError(OnErrorType.STOP_PROCESSING_JOB)
-                .withRelativePriority(Priority.NORMAL);
+                    .withOnError(OnErrorType.STOP_PROCESSING_JOB)
+                    .withRelativePriority(Priority.NORMAL);
 
             // Create codecs for the preset and add it to the preset
             List<Codec> codecs = new ArrayList<>();
@@ -259,31 +254,31 @@ public class EncodingWithMESCustomPreset {
 
             // Add an AAC Audio layer for the audio encoding
             codecs.add(new AacAudio()
-                .withProfile(AacAudioProfile.AAC_LC)
-                .withChannels(2)
-                .withSamplingRate(48000)
-                .withBitrate(128000));
+                    .withProfile(AacAudioProfile.AAC_LC)
+                    .withChannels(2)
+                    .withSamplingRate(48000)
+                    .withBitrate(128000));
 
             // Next, add a H264Video with two layers, HD and SD for the video encoding
             List<H264Layer> layers = new ArrayList<>();
             // Add H264Layers, one at HD and the other at SD. Assign a label that you can use for the output filename
             H264Layer hdLayer = new H264Layer();
             hdLayer.withBitrate(1000000)    // Units are in bits per second
-                .withWidth("1280")
-                .withHeight("720")
-                .withLabel("HD");           // This label is used to modify the file name in the output formats
+                    .withWidth("1280")
+                    .withHeight("720")
+                    .withLabel("HD");           // This label is used to modify the file name in the output formats
             H264Layer sdLayer = new H264Layer();
             sdLayer.withBitrate(600000)
-                .withWidth("640")
-                .withHeight("360")
-                .withLabel("SD");
+                    .withWidth("640")
+                    .withHeight("360")
+                    .withLabel("SD");
             layers.add(hdLayer);
             layers.add(sdLayer);
 
             codecs.add(new H264Video()      // Add a H264Video to codecs
-                .withLayers(layers)         // Add the 2 layers
-                .withKeyFrameInterval(Period.seconds(2))    //Set the GOP interval to 2 seconds for both H264Layers
-                );
+                    .withLayers(layers)         // Add the 2 layers
+                    .withKeyFrameInterval(Period.seconds(2))    //Set the GOP interval to 2 seconds for both H264Layers
+            );
 
             // Also generate a set of PNG thumbnails
             List<PngLayer> pngLayers = new ArrayList<>();
@@ -292,10 +287,10 @@ public class EncodingWithMESCustomPreset {
             pngLayer.withHeight("50%");
             pngLayers.add(pngLayer);
             codecs.add(new PngImage()
-                .withLayers(pngLayers)
-                .withStart("25%")
-                .withStep("25%")
-                .withRange("80%"));
+                    .withLayers(pngLayers)
+                    .withStart("25%")
+                    .withStep("25%")
+                    .withRange("80%"));
 
             // Specify the format for the output files - one for video+audio, and another for the thumbnails
             List<Format> formats = new ArrayList<>();
@@ -308,10 +303,10 @@ public class EncodingWithMESCustomPreset {
 
             // Create the custom Transform with the outputs defined above
             transform = manager.transforms().define(transformName)
-                .withExistingMediaservice(resourceGroup, accountName)
-                .withOutputs(outputs)
-                .withDescription("A simple custom encoding transform with 2 MP4 bitrates")
-                .create();
+                    .withExistingMediaservice(resourceGroup, accountName)
+                    .withOutputs(outputs)
+                    .withDescription("A simple custom encoding transform with 2 MP4 bitrates")
+                    .create();
         }
 
         return transform;
@@ -319,24 +314,23 @@ public class EncodingWithMESCustomPreset {
 
     /**
      * Creates a new input Asset and uploads the specified local video file into it.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
      * @param assetName         The name of the asset where the media file to uploaded to.
      * @param mediaFile         The path of a media file to be uploaded into the asset.
-     * @return                  The asset.
+     * @return The asset.
      */
     private static Asset createInputAsset(MediaManager manager, String resourceGroupName, String accountName,
-            String assetName, String mediaFile) throws Exception {
+                                          String assetName, String mediaFile) throws Exception {
         Asset asset;
         try {
             // In this example, we are assuming that the asset name is unique.
             // If you already have an asset with the desired name, use the Assets.getAsync method
             // to get the existing asset.
             asset = manager.assets().getAsync(resourceGroupName, accountName, assetName).toBlocking().first();
-        }
-        catch (NoSuchElementException nse) {
+        } catch (NoSuchElementException nse) {
             asset = null;
         }
 
@@ -346,13 +340,12 @@ public class EncodingWithMESCustomPreset {
             // This method creates a container in storage for the Asset.
             // The files (blobs) associated with the asset will be stored in this container.
             asset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName).create();
-        }
-        else {
+        } else {
             // The asset already exists and we are going to overwrite it. In your application, if you don't want to overwrite
             // an existing asset, use an unique name.
             System.out.println("Warning: The asset named " + assetName + "already exists. It will be overwritten.");
         }
-        
+
         // Use Media Services API to get back a response that contains
         // SAS URL for the Asset container into which to upload blobs.
         // That is where you would specify read-write permissions
@@ -361,16 +354,18 @@ public class EncodingWithMESCustomPreset {
                 .withPermissions(AssetContainerPermission.READ_WRITE).withExpiryTime(DateTime.now().plusHours(4));
         AssetContainerSas response = manager.assets()
                 .listContainerSasAsync(resourceGroupName, accountName, assetName, parameters).toBlocking().first();
-        URI sasUri = new URI(response.assetContainerSasUrls().get(0));
 
         // Use Storage API to get a reference to the Asset container
         // that was created by calling Asset's create method.
-        CloudBlobContainer container = new CloudBlobContainer(sasUri);
+        BlobContainerClient container =
+                new BlobContainerClientBuilder()
+                        .connectionString(response.assetContainerSasUrls().get(0))
+                        .buildClient();
 
         // Uploading from a local file:
         String fileToUpload = EncodingWithMESCustomPreset.class.getClassLoader().getResource(mediaFile).getPath(); // The file is a resource in CLASSPATH.
         File file = new File(fileToUpload);
-        CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
+        BlobClient blob = container.getBlobClient(file.getName());
 
         // Use Storage API to upload the file into the container in storage.
         blob.uploadFromFile(fileToUpload);
@@ -380,21 +375,20 @@ public class EncodingWithMESCustomPreset {
 
     /**
      * Creates an output asset. The output from the encoding Job must be written to an Asset.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
      * @param assetName         The output asset name.
-     * @return                  The asset.
+     * @return The asset.
      */
     private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
-            String assetName) {
+                                           String assetName) {
         Asset outputAsset;
         try {
             // Check if an Asset already exists
             outputAsset = manager.assets().getAsync(resourceGroupName, accountName, assetName).toBlocking().first();
-        }
-        catch (NoSuchElementException nse) {
+        } catch (NoSuchElementException nse) {
             outputAsset = null;
         }
 
@@ -402,11 +396,10 @@ public class EncodingWithMESCustomPreset {
             // The asset already exists and we are going to overwrite it. In your application, if you don't want to overwrite
             // an existing asset, use an unique name.
             System.out.println("Warning: The asset named " + assetName + " already exists. It will be overwritten.");
-        }
-        else {
+        } else {
             System.out.println("Creating an output asset..");
             outputAsset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
-                .create();
+                    .create();
         }
 
         return outputAsset;
@@ -414,7 +407,7 @@ public class EncodingWithMESCustomPreset {
 
     /**
      * Submits a request to Media Services to apply the specified Transform to a given input video.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
@@ -423,10 +416,10 @@ public class EncodingWithMESCustomPreset {
      * @param inputAssetName    The name of the input asset.
      * @param outputAssetName   The (unique) name of the output asset that will.
      *                          store the result of the encoding job.
-     * @return                  The job created.
+     * @return The job created.
      */
     private static Job submitJob(MediaManager manager, String resourceGroupName, String accountName,
-            String transformName, String jobName, String inputAssetName, String outputAssetName) {
+                                 String transformName, String jobName, String inputAssetName, String outputAssetName) {
         JobInput jobInput = new JobInputAsset().withAssetName(inputAssetName);
 
         JobOutput output = new JobOutputAsset().withAssetName(outputAssetName);
@@ -440,12 +433,11 @@ public class EncodingWithMESCustomPreset {
         try {
             System.out.println("Creating a job...");
             job = manager.jobs().define(jobName).withExistingTransform(resourceGroupName, accountName, transformName)
-                .withInput(jobInput).withOutputs(jobOutputs).create();
-        }
-        catch (ApiErrorException exception) {
+                    .withInput(jobInput).withOutputs(jobOutputs).create();
+        } catch (ApiErrorException exception) {
             System.out.println("Failed to create job.");
             System.out.println("ERROR: API call failed with error code '" + exception.body().error().code() + "' and message " +
-            exception.body().error().message());
+                    exception.body().error().message());
             throw exception;
         }
 
@@ -454,16 +446,16 @@ public class EncodingWithMESCustomPreset {
 
     /**
      * Polls Media Services for the status of the Job.
-     * 
+     *
      * @param manager       This is the entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param transformName The name of the transform.
      * @param jobName       The name of the job you submitted.
-     * @return              The job.
+     * @return The job.
      */
     private static Job waitForJobToFinish(MediaManager manager, String resourceGroup, String accountName,
-            String transformName, String jobName) {
+                                          String transformName, String jobName) {
         final int SLEEP_INTERVAL = 30 * 1000;
 
         Job job = null;
@@ -500,52 +492,42 @@ public class EncodingWithMESCustomPreset {
     /**
      * Downloads the results from the specified output asset, so you can see what
      * you got.
-     * 
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param assetName     The output asset.
      * @param outputFolder  The name of the folder into which to download the results.
      * @throws URISyntaxException
-     * @throws StorageException
      * @throws IOException
      */
     private static void downloadOutputAsset(MediaManager manager, String resourceGroup, String accountName,
-            String assetName, File outputFolder) throws URISyntaxException, StorageException, IOException {
+                                            String assetName, File outputFolder) throws URISyntaxException, IOException {
         final int LIST_BLOBS_SEGMENT_MAX_RESULT = 5;
-        
-        ListContainerSasInput parameters = new ListContainerSasInput()
-            .withPermissions(AssetContainerPermission.READ)
-            .withExpiryTime(DateTime.now().plusHours(1));
-        
-        AssetContainerSas assetContainerSas = manager.assets()
-            .listContainerSasAsync(resourceGroup, accountName, assetName, parameters)
-            .toBlocking().first();
 
-        URI containerSasUrl = new URI(assetContainerSas.assetContainerSasUrls().get(0));
-        CloudBlobContainer container = new CloudBlobContainer(containerSasUrl);
-        
+        ListContainerSasInput parameters = new ListContainerSasInput()
+                .withPermissions(AssetContainerPermission.READ)
+                .withExpiryTime(DateTime.now().plusHours(1));
+
+        AssetContainerSas assetContainerSas = manager.assets()
+                .listContainerSasAsync(resourceGroup, accountName, assetName, parameters)
+                .toBlocking().first();
+
+        BlobContainerClient container =
+                new BlobContainerClientBuilder()
+                        .connectionString(assetContainerSas.assetContainerSasUrls().get(0))
+                        .buildClient();
+
         File directory = new File(outputFolder, assetName);
         directory.mkdirs();
 
         System.out.println("Downloading output results to " + directory.getPath() + "...");
 
-        ResultContinuation continuationToken = null;
-
-        do {
-            ResultSegment<ListBlobItem> segment = container.listBlobsSegmented(null, true, EnumSet.noneOf(BlobListingDetails.class),
-                LIST_BLOBS_SEGMENT_MAX_RESULT, continuationToken, null, null);
-
-            for (ListBlobItem blobItem: segment.getResults()) {
-                if (blobItem instanceof CloudBlockBlob) {
-                    CloudBlockBlob blob = (CloudBlockBlob)blobItem;
-                    File downloadTo = new File(directory, blob.getName());
-                    blob.downloadToFile(downloadTo.getPath());
-                }
-            }
-            continuationToken = segment.getContinuationToken();
-        }
-        while (continuationToken != null);
+        container.listBlobs().forEach(blobItem -> {
+            BlobClient blob = container.getBlobClient(blobItem.getName());
+            File downloadTo = new File(directory, blobItem.getName());
+            blob.downloadToFile(downloadTo.getAbsolutePath());
+        });
 
         System.out.println("Download complete.");
     }
@@ -553,46 +535,48 @@ public class EncodingWithMESCustomPreset {
     /**
      * Creates a StreamingLocator for the specified asset and with the specified streaming policy name.
      * Once the StreamingLocator is created the output asset is available to clients for playback.
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param assetName     The name of the output asset.
      * @param locatorName   The StreamingLocator name (unique in this case).
-     * @return              The locator created.
+     * @return The locator created.
      */
     private static StreamingLocator createStreamingLocator(MediaManager manager, String resourceGroup, String accountName,
-        String assetName, String locatorName) {
+                                                           String assetName, String locatorName) {
         StreamingLocator locator = manager
-            .streamingLocators().define(locatorName)
-            .withExistingMediaservice(resourceGroup, accountName)
-            .withAssetName(assetName)
-            .withStreamingPolicyName("Predefined_ClearStreamingOnly")
-            .create();
+                .streamingLocators().define(locatorName)
+                .withExistingMediaservice(resourceGroup, accountName)
+                .withAssetName(assetName)
+                .withStreamingPolicyName("Predefined_ClearStreamingOnly")
+                .create();
 
         return locator;
     }
 
     /**
      * Checks if the streaming endpoint is in the running state, if not, starts it.
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param locatorName   The name of the StreamingLocator that was created.
-     * @return              List of streaming urls.
+     * @return List of streaming urls.
      */
     private static List<String> getStreamingUrls(MediaManager manager, String resourceGroup, String accountName,
-        String locatorName, StreamingEndpoint streamingEndpoint) {
+                                                 String locatorName, StreamingEndpoint streamingEndpoint) {
         List<String> streamingUrls = new ArrayList<>();
 
         ListPathsResponse paths = manager.streamingLocators().listPathsAsync(resourceGroup, accountName, locatorName)
-            .toBlocking().first();
-        
-        for (StreamingPath path: paths.streamingPaths()) {
+                .toBlocking().first();
+
+        for (StreamingPath path : paths.streamingPaths()) {
             StringBuilder uriBuilder = new StringBuilder();
             uriBuilder.append("https://")
-                .append(streamingEndpoint.hostName())
-                .append("/")
-                .append(path.paths().get(0));
+                    .append(streamingEndpoint.hostName())
+                    .append("/")
+                    .append(path.paths().get(0));
 
             streamingUrls.add(uriBuilder.toString());
         }
@@ -600,7 +584,8 @@ public class EncodingWithMESCustomPreset {
     }
 
     /**
-     * Cleanup 
+     * Cleanup
+     *
      * @param manager               The entry point of Azure Media resource management.
      * @param resourceGroupName     The name of the resource group within the Azure subscription.
      * @param accountName           The Media Services account name.
@@ -613,7 +598,7 @@ public class EncodingWithMESCustomPreset {
      * @param streamingEndpointName The endpoint name.
      */
     private static void cleanup(MediaManager manager, String resourceGroupName, String accountName, String transformName, String jobName,
-        String inputAssetName, String outputAssetName, String streamingLocatorName, boolean stopEndpoint, String streamingEndpointName) {
+                                String inputAssetName, String outputAssetName, String streamingLocatorName, boolean stopEndpoint, String streamingEndpointName) {
         if (manager == null) {
             return;
         }
@@ -626,8 +611,7 @@ public class EncodingWithMESCustomPreset {
         if (stopEndpoint) {
             // Because we started the endpoint, we'll stop it.
             manager.streamingEndpoints().stopAsync(resourceGroupName, accountName, streamingEndpointName).await();
-        }
-        else {
+        } else {
             // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
             // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
             System.out.println("The endpoint '" + streamingEndpointName + "' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
