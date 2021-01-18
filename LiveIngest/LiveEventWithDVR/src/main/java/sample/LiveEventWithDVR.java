@@ -3,9 +3,6 @@
 
 package sample;
 
-import com.azure.messaging.eventhubs.EventProcessorClient;
-import com.azure.messaging.eventhubs.EventProcessorClientBuilder;
-import com.azure.messaging.eventhubs.checkpointstore.blob.BlobCheckpointStore;
 import com.azure.storage.blob.BlobContainerAsyncClient;
 import com.azure.storage.blob.BlobServiceAsyncClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
@@ -13,7 +10,6 @@ import com.azure.storage.blob.models.ListBlobsOptions;
 import org.joda.time.Period;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
 import com.microsoft.aad.adal4j.AuthenticationException;

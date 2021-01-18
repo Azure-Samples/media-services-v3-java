@@ -4,7 +4,6 @@
 package sample;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Scanner;
@@ -12,7 +11,6 @@ import java.util.UUID;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URISyntaxException;
 
 import com.azure.storage.blob.BlobClient;
