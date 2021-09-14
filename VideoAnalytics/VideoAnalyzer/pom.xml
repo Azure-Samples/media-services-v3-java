@@ -34,9 +34,10 @@
       <version>1.6.8</version>
     </dependency>
     <dependency>
-      <groupId>com.microsoft.azure</groupId>
-      <artifactId>azure-client-runtime</artifactId>
-      <version>1.6.8</version>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-sdk-bom</artifactId>
+      <version>1.0.3</version>
+      <type>pom</type>
     </dependency>
     <!-- https://mvnrepository.com/artifact/com.azure/azure-storage-blob -->
     <dependency>

@@ -33,6 +33,7 @@ public class ConfigWrapper {
     private static final String STORAGE_CONTAINER_NAME = "StorageContainerName";
     private static final String STORAGE_ACCOUNT_NAME = "StorageAccountName";
     private static final String STORAGE_ACCOUNT_KEY = "StorageAccountKey";
+    private static final String STORAGE_CONNECTION_STRING = "StorageConnectionString";
 
     private final JSONObject jsonObject;
     private final InputStreamReader isReader;
@@ -129,4 +130,6 @@ public class ConfigWrapper {
     public String getStorageAccountKey() {
         return (String)jsonObject.get(STORAGE_ACCOUNT_KEY);
     }
+
+    public String getStorageConnectionString() {return (String)jsonObject.get(STORAGE_CONNECTION_STRING);}
 }

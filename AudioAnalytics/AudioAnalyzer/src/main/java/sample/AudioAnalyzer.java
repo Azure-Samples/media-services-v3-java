@@ -17,7 +17,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Callable;
 import java.util.Arrays;
 
-import com.azure.storage.blob.*;
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerAsyncClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobContainerClientBuilder;
+import com.azure.storage.blob.BlobServiceAsyncClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
 import com.azure.storage.blob.models.ListBlobsOptions;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
@@ -111,9 +116,7 @@ public class AudioAnalyzer {
                 // First we will try to process Job events through Event Hub in real-time. If this fails for any reason,
                 // we will fall-back on polling Job status instead.
                 System.out.println("Creating an event processor host to process events from Event Hub...");
-                String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
-                        config.getStorageAccountName() +
-                        ";AccountKey=" + config.getStorageAccountKey() + ";EndpointSuffix=core.windows.net";
+                String storageConnectionString = config.getStorageConnectionString();
 
                 // Cleanup storage container. We will config Event Hub to use the storage container configured in appsettings.json.
                 // All the blobs in <The container configured in appsettings.json>/$Default will be deleted.
