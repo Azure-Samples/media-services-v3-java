@@ -149,14 +149,12 @@ public class BasicWidevine {
                         ";AccountKey=" + config.getStorageAccountKey() + ";EndpointSuffix=core.windows.net";
 
                 // Cleanup storage container. We will config Event Hub to use the storage container configured in appsettings.json.
-                // All the blobs in <The container configured in appsettings.json>/$Default will be deleted.
+                // All the blobs in <The container configured in appsettings.json> will be deleted.
                 BlobServiceAsyncClient client = new BlobServiceClientBuilder()
                         .connectionString(storageConnectionString)
                         .buildAsyncClient();
                 BlobContainerAsyncClient container = client.getBlobContainerAsyncClient(config.getStorageContainerName());
-                container.listBlobs(
-                        new ListBlobsOptions().setPrefix("$Default/"))
-                        .subscribe(blobItem -> {
+                container.listBlobs().subscribe(blobItem -> {
                             container.getBlobAsyncClient(blobItem.getName()).delete();
                         });
 

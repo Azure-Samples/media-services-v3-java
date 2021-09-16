@@ -3,101 +3,89 @@
 
 package sample;
 
-import com.azure.messaging.eventhubs.EventData;
 import com.azure.messaging.eventhubs.EventProcessorClient;
 import com.azure.messaging.eventhubs.EventProcessorClientBuilder;
 import com.azure.messaging.eventhubs.checkpointstore.blob.BlobCheckpointStore;
-import com.azure.messaging.eventhubs.models.*;
+import com.azure.messaging.eventhubs.models.EventContext;
 import com.azure.storage.blob.BlobContainerAsyncClient;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
-import java.util.function.Consumer;
-
 /**
  * Implementation of IEventProcessor to handle events from Event Hub.
  */
 public class MediaServicesEventProcessor {
-    private final Object MONITOR;
-    private final String JOB_NAME;
-    private final String LIVE_EVENT_NAME;
-    private final String EVENT_HUB_CONN_STRING;
-    private final String EVENT_HUB_NAME;
-    private final BlobContainerAsyncClient BLOB_CONTAINER;
-    private final Consumer<EventContext> eventContextConsumer =
-            eventContext -> this.printEvent(eventContext.getPartitionContext(), eventContext.getEventData());
-    private final Consumer<ErrorContext> errorContextConsumer =
-            errorContext -> System.out.println("Partition " + errorContext.getPartitionContext().getPartitionId()
-                    + " onError: " + errorContext.getThrowable().toString());
-    private final Consumer<CloseContext> closeContextConsumer =
-            closeContext -> System.out.println("Partition " + closeContext.getPartitionContext().getPartitionId()
-                    + " is closing for reason " + closeContext.getCloseReason().toString());
-    private final Consumer<InitializationContext> initializationContextConsumer =
-            initializationContextConsumer -> System.out.println("Partition "
-                    + initializationContextConsumer.getPartitionContext().getPartitionId() + " is opening");
+    private final Object monitor;
+    private final String jobName;
+    private final String liveEventName;
+    private final String eventHubConnectionString;
+    private final String eventHubName;
+    private final BlobContainerAsyncClient blobContainer;
 
     public MediaServicesEventProcessor(String jobName, Object monitor, String liveEventName,
                                        String eventHubConnectionString, String eventHubName,
                                        BlobContainerAsyncClient container) {
 
-        this.EVENT_HUB_CONN_STRING = eventHubConnectionString;
-        this.EVENT_HUB_NAME = eventHubName;
-        this.BLOB_CONTAINER = container;
+        this.eventHubConnectionString = eventHubConnectionString;
+        this.eventHubName = eventHubName;
+        this.blobContainer = container;
 
         if (jobName != null) {
-            this.JOB_NAME = jobName.replaceAll("-", "");
+            this.jobName = jobName.replaceAll("-", "");
         } else {
-            this.JOB_NAME = null;
+            this.jobName = null;
         }
 
 
-        monitor = bulidEventProcessClient();
-        this.MONITOR = monitor;
+        monitor = buildEventProcessClient();
+        this.monitor = monitor;
 
         if (liveEventName != null) {
-            this.LIVE_EVENT_NAME = liveEventName.replaceAll("-", "");
+            this.liveEventName = liveEventName.replaceAll("-", "");
         } else {
-            this.LIVE_EVENT_NAME = null;
+            this.liveEventName = null;
         }
     }
 
     public MediaServicesEventProcessor() {
-        this.JOB_NAME = null;
-        this.MONITOR = null;
-        this.LIVE_EVENT_NAME = null;
-        this.EVENT_HUB_NAME = null;
-        this.EVENT_HUB_CONN_STRING = null;
-        this.BLOB_CONTAINER = null;
+        this.jobName = null;
+        this.monitor = null;
+        this.liveEventName = null;
+        this.eventHubName = null;
+        this.eventHubConnectionString = null;
+        this.blobContainer = null;
     }
 
     public void stop() {
-        if (this.MONITOR instanceof EventProcessorClient) {
-            ((EventProcessorClient) this.MONITOR).stop();
-        }
+        ((EventProcessorClient) this.monitor).stop();
     }
 
-    private EventProcessorClient bulidEventProcessClient() {
+    private EventProcessorClient buildEventProcessClient() {
         return new EventProcessorClientBuilder()
-                .connectionString(this.EVENT_HUB_CONN_STRING, this.EVENT_HUB_NAME)
-                .checkpointStore(new BlobCheckpointStore(this.BLOB_CONTAINER))
+                .connectionString(this.eventHubConnectionString, this.eventHubName)
+                .checkpointStore(new BlobCheckpointStore(this.blobContainer))
                 .consumerGroup("$Default")
-                .processEvent(eventContextConsumer)
-                .processError(errorContextConsumer)
-                .processPartitionInitialization(initializationContextConsumer)
-                .processPartitionClose(closeContextConsumer)
+                .processEvent(eventContext -> this.processEvent(eventContext))
+                .processError(errorContext -> System.out.println("Partition "
+                        + errorContext.getPartitionContext().getPartitionId()
+                        + " onError: " + errorContext.getThrowable().getMessage()))
+                .processPartitionInitialization(initializationContextConsumer -> System.out.println("Partition "
+                        + initializationContextConsumer.getPartitionContext().getPartitionId() + " is opening"))
+                .processPartitionClose(closeContext -> System.out.println("Partition "
+                        + closeContext.getPartitionContext().getPartitionId()
+                        + " is closing for reason " + closeContext.getCloseReason().toString()))
                 .buildEventProcessorClient();
     }
 
     /**
      * Parse and print Media Services events.
      *
-     * @param context   partition-related information.
-     * @param eventData Event Hub event data.
+     * @param eventContext Event Hub event data context.
      */
-    private final void printEvent(PartitionContext context, EventData eventData) {
+    private final void processEvent(EventContext eventContext) {
         try {
-            String data = new String(eventData.getBody(), "UTF8");
+            String data = new String(eventContext.getEventData().getBody(), "UTF8");
             JSONParser parser = new JSONParser();
             Object obj = parser.parse(data);
             if (obj instanceof JSONArray) {
@@ -110,7 +98,7 @@ public class MediaServicesEventProcessor {
                         String eventName = subject.replaceFirst("^.*/", "").replaceAll("-", "");
 
                         // Only these events from registered job or live event.
-                        if (!eventName.equals(JOB_NAME) && !eventName.equals(LIVE_EVENT_NAME)) {
+                        if (!eventName.equals(jobName) && !eventName.equals(liveEventName)) {
                             return;
                         }
 
@@ -130,9 +118,9 @@ public class MediaServicesEventProcessor {
                                 if (eventType.equals("Microsoft.Media.JobFinished") || eventType.equals("Microsoft.Media.JobCanceled") ||
                                         eventType.equals("Microsoft.Media.JobErrored")) {
                                     // Job finished, send a message.
-                                    if (MONITOR != null) {
-                                        synchronized (MONITOR) {
-                                            MONITOR.notify();
+                                    if (monitor != null) {
+                                        synchronized (monitor) {
+                                            monitor.notify();
                                         }
                                     }
                                 }
