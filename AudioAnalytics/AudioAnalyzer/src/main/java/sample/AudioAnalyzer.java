@@ -124,9 +124,8 @@ public class AudioAnalyzer {
                         .connectionString(storageConnectionString)
                         .buildAsyncClient();
                 BlobContainerAsyncClient container = client.getBlobContainerAsyncClient(config.getStorageContainerName());
-                container.listBlobs().subscribe(blobItem -> {
-                            container.getBlobAsyncClient(blobItem.getName()).delete();
-                        });
+                container.listBlobs().collectList().block()
+                        .forEach(blobItem -> container.getBlobAsyncClient(blobItem.getName()).delete().block());
 
                 // Create a event processor host to process events from Event Hub.
                 Object monitor = new Object();
