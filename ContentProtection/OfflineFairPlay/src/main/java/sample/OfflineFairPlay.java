@@ -16,19 +16,21 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Callable;
 import java.util.Arrays;
+
+import com.azure.storage.blob.BlobContainerAsyncClient;
+import com.azure.storage.blob.BlobServiceAsyncClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
+import com.azure.storage.blob.models.ListBlobsOptions;
 import org.apache.commons.codec.binary.Base64;
 
 import com.microsoft.aad.adal4j.AuthenticationException;
 import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.credentials.ApplicationTokenCredentials;
-import com.microsoft.azure.eventprocessorhost.EventProcessorHost;
-import com.microsoft.azure.eventprocessorhost.EventProcessorOptions;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.ApiErrorException;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.Asset;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.BuiltInStandardEncoderPreset;
@@ -60,14 +62,9 @@ import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPolicyS
 import com.microsoft.azure.management.mediaservices.v2020_05_01.Transform;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.TransformOutput;
 import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
-import com.microsoft.azure.storage.blob.CloudBlobContainer;
-import com.microsoft.azure.storage.blob.ListBlobItem;
-import com.microsoft.azure.storage.blob.CloudBlobClient;
-import com.microsoft.azure.storage.blob.CloudBlob;
-import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.rest.LogLevel;
 
-public class OfflineFairPlay{
+public class OfflineFairPlay {
     private static final String ADAPTIVE_STREAMING_TRANSFORM_NAME = "MyTransformWithAdaptiveStreamingPreset";
     private static final String CONTENT_KEY_POLICY_NAME = "FairPlayContentKeyPolicy";
     private static final String BASE_URI = "https://nimbuscdn-nimbuspm.streaming.mediaservices.windows.net/2b533311-b215-4409-80af-529c3e853622/";
@@ -85,7 +82,7 @@ public class OfflineFairPlay{
 
     /**
      * Run the sample.
-     * 
+     *
      * @param config This param is of type ConfigWrapper, which reads values from
      *               local configuration file.
      */
@@ -109,7 +106,7 @@ public class OfflineFairPlay{
         String outputAssetName = "output-" + uniqueness;
         String locatorName = "locator-" + uniqueness;
 
-        EventProcessorHost eventProcessorHost = null;
+        MediaServicesEventProcessor eventProcessorHost = null;
         boolean stopEndpoint = false;
 
         Scanner scanner = new Scanner(System.in);
@@ -118,14 +115,14 @@ public class OfflineFairPlay{
             // Ensure that you have the desired encoding Transform. This is really a one
             // time setup operation.
             Transform transform = getOrCreateTransform(manager, config.getResourceGroup(), config.getAccountName(),
-                ADAPTIVE_STREAMING_TRANSFORM_NAME);
+                    ADAPTIVE_STREAMING_TRANSFORM_NAME);
 
             // Output from the encoding Job must be written to an Asset, so let's create one
             Asset outputAsset = createOutputAsset(manager, config.getResourceGroup(), config.getAccountName(),
-                outputAssetName);
+                    outputAssetName);
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
-                transform.name(), outputAsset.name(), jobName);
+                    transform.name(), outputAsset.name(), jobName);
 
             long startedTime = System.currentTimeMillis();
 
@@ -137,39 +134,28 @@ public class OfflineFairPlay{
                 System.out.println("Creating an event processor host to process events from Event Hub...");
 
                 String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=" +
-                    config.getStorageAccountName() +
-                    ";AccountKey=" + config.getStorageAccountKey();
-                
+                        config.getStorageAccountName() +
+                        ";AccountKey=" + config.getStorageAccountKey() + ";EndpointSuffix=core.windows.net";
+
                 // Cleanup storage container. We will config Event Hub to use the storage container configured in appsettings.json.
-                // All the blobs in <The container configured in appsettings.json>/$Default will be deleted.
-                CloudStorageAccount account = CloudStorageAccount.parse(storageConnectionString);
-                CloudBlobClient client = account.createCloudBlobClient();
-                CloudBlobContainer container = client.getContainerReference(config.getStorageContainerName());
-                for (ListBlobItem item : container.listBlobs("$Default/", true)) {
-                    if (item instanceof CloudBlob) {
-                        CloudBlob blob = (CloudBlob) item;
-                        blob.delete();
-                    }
-                }
+                // All the blobs in <The container configured in appsettings.json> will be deleted.
+                BlobServiceAsyncClient client = new BlobServiceClientBuilder()
+                        .connectionString(storageConnectionString)
+                        .buildAsyncClient();
+                BlobContainerAsyncClient container = client.getBlobContainerAsyncClient(config.getStorageContainerName());
+                container.listBlobs().subscribe(blobItem -> {
+                            container.getBlobAsyncClient(blobItem.getName()).delete();
+                        });
 
                 // Create a new host to process events from an Event Hub.
-                eventProcessorHost = new EventProcessorHost(
-                    EventProcessorHost.createHostName(null),
-                    config.getEventHubName(),
-                    "$Default",         // The name of the consumer group to use when receiving from the Event Hub. DefaultConsumerGroupName is used here.
-                    config.getEventHubConnectionString(),
-                    storageConnectionString,
-                    config.getStorageContainerName()
-                );
-
                 Object monitor = new Object();
-                CompletableFuture<Void> registerResult = eventProcessorHost
-                    .registerEventProcessorFactory(new MediaServicesEventProcessorFactory(jobName, monitor), EventProcessorOptions .getDefaultOptions());
-                registerResult.get();
+                eventProcessorHost = new MediaServicesEventProcessor(jobName, monitor, null,
+                        config.getEventHubConnectionString(), config.getEventHubName(),
+                        container);
 
                 // Define a task to wait for the job to finish.
                 Callable<String> jobTask = () -> {
-                    synchronized(monitor) {
+                    synchronized (monitor) {
                         monitor.wait();
                     }
                     return "Job";
@@ -188,10 +174,9 @@ public class OfflineFairPlay{
                 if (result.equalsIgnoreCase("Job")) {
                     // Job finished. Shutdown timeout.
                     executor.shutdownNow();
-                }
-                else {
+                } else {
                     // Timeout happened. Switch to polling method.
-                    synchronized(monitor) {
+                    synchronized (monitor) {
                         monitor.notify();
                     }
 
@@ -200,16 +185,14 @@ public class OfflineFairPlay{
 
                 // Get the latest status of the job.
                 job = manager.jobs().getAsync(config.getResourceGroup(), config.getAccountName(), transform.name(), jobName).toBlocking().first();
-            }
-            catch (Exception e)
-            {
+            } catch (Exception e) {
                 System.out.println("Warning: Failed to connect to Event Hub, please see README for Event Hub and storage settings.");
                 // if Event Grid or Event Hub is not configured, We will fall-back on polling instead.
                 // Polling is not a recommended best practice for production applications because of the latency it introduces.
                 // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
                 System.out.println("Failed to start Event Grid monitoring, will use polling job status instead...");
                 job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
-                    transform.name(), jobName);
+                        transform.name(), jobName);
             }
 
             long elapsed = (System.currentTimeMillis() - startedTime) / 1000; // Elapsed time in seconds
@@ -221,11 +204,11 @@ public class OfflineFairPlay{
                 ContentKeyPolicy policy = getOrCreateContentKeyPolicy(manager, config, CONTENT_KEY_POLICY_NAME);
 
                 StreamingLocator locator = createStreamingLocator(manager, config.getResourceGroup(), config.getAccountName(),
-                    outputAssetName, locatorName, policy.name());
+                        outputAssetName, locatorName, policy.name());
 
                 StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-                    .getAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME)
-                    .toBlocking().first();
+                        .getAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME)
+                        .toBlocking().first();
 
                 if (streamingEndpoint != null) {
                     // Start The Streaming Endpoint if it is not running.
@@ -242,8 +225,7 @@ public class OfflineFairPlay{
                     System.out.println("HLS url can be played on your Apple device:");
                     System.out.println(hlsPath);
                     System.out.println();
-                }
-                else {
+                } else {
                     System.out.println("Could not find streaming endpoint: " + DEFAULT_STREAMING_ENDPOINT_NAME);
                 }
 
@@ -257,8 +239,7 @@ public class OfflineFairPlay{
                 if (cause instanceof AuthenticationException) {
                     System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
                     break;
-                }
-                else if (cause instanceof ApiErrorException) {
+                } else if (cause instanceof ApiErrorException) {
                     ApiErrorException apiException = (ApiErrorException) cause;
                     System.out.println("ERROR: " + apiException.body().error().message());
                     break;
@@ -275,12 +256,12 @@ public class OfflineFairPlay{
             }
 
             if (eventProcessorHost != null) {
-                eventProcessorHost.unregisterEventProcessor();
+                eventProcessorHost.stop();
                 eventProcessorHost = null;
             }
 
             cleanup(manager, config.getResourceGroup(), config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName,
-                outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME, stopEndpoint, DEFAULT_STREAMING_ENDPOINT_NAME);
+                    outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME, stopEndpoint, DEFAULT_STREAMING_ENDPOINT_NAME);
         }
     }
 
@@ -288,7 +269,7 @@ public class OfflineFairPlay{
      * If the specified transform exists, get that transform. If the it does not
      * exist, creates a new transform with the specified output. In this case, the
      * output is set to encode a video using one of the built-in encoding presets.
-     * 
+     *
      * @param manager       The entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
@@ -296,7 +277,7 @@ public class OfflineFairPlay{
      * @return The transform found or created.
      */
     private static Transform getOrCreateTransform(MediaManager manager, String resourceGroup, String accountName,
-            String transformName) {
+                                                  String transformName) {
         Transform transform;
         try {
             // Does a Transform already exist with the desired name? Assume that an existing
@@ -326,30 +307,28 @@ public class OfflineFairPlay{
     /**
      * Creates an output asset. The output from the encoding Job must be written to
      * an Asset.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
      * @param assetName         The output asset name.
-     * @return                  The output asset created.
+     * @return The output asset created.
      */
     private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
-            String assetName) {
+                                           String assetName) {
         Asset outputAsset;
         try {
             outputAsset = manager.assets().getAsync(resourceGroupName, accountName, assetName).toBlocking().first();
-        }
-        catch (NoSuchElementException nse) {
+        } catch (NoSuchElementException nse) {
             outputAsset = null;
         }
 
         if (outputAsset == null) {
             System.out.println("Creating an output asset...");
             outputAsset = manager.assets().define(assetName)
-                .withExistingMediaservice(resourceGroupName, accountName)
-                .create();
-        }
-        else {
+                    .withExistingMediaservice(resourceGroupName, accountName)
+                    .create();
+        } else {
             // The asset already exists and we are going to overwrite it. In your application, if you don't want to overwrite
             // an existing asset, use an unique name.
             System.out.println("Warning: The asset named " + assetName + "already exists. It will be overwritten.");
@@ -361,7 +340,7 @@ public class OfflineFairPlay{
     /**
      * Submits a request to Media Services to apply the specified Transform to a
      * given input video.
-     * 
+     *
      * @param manager           This is the entry point of Azure Media resource management.
      * @param resourceGroupName The name of the resource group within the Azure subscription.
      * @param accountName       The Media Services account name.
@@ -372,7 +351,7 @@ public class OfflineFairPlay{
      * @return The job created.
      */
     private static Job submitJob(MediaManager manager, String resourceGroupName, String accountName,
-            String transformName, String outputAssetName, String jobName) {
+                                 String transformName, String outputAssetName, String jobName) {
         // This example shows how to encode from any HTTPs source URL - a new feature of the v3 API.
         // Change the URL to any accessible HTTPs URL or SAS URL from Azure.
         List<String> files = new ArrayList<>();
@@ -392,14 +371,13 @@ public class OfflineFairPlay{
         try {
             System.out.println("Creating a job...");
             job = manager.jobs().define(jobName)
-                .withExistingTransform(resourceGroupName, accountName, transformName)
-                .withInput(jobInput)
-                .withOutputs(jobOutputs)
-                .create();
-        }
-        catch (ApiErrorException exception) {
+                    .withExistingTransform(resourceGroupName, accountName, transformName)
+                    .withInput(jobInput)
+                    .withOutputs(jobOutputs)
+                    .create();
+        } catch (ApiErrorException exception) {
             System.out.println("ERROR: API call failed with error code " + exception.body().error().code() +
-                " and message '" + exception.body().error().message() + "'");
+                    " and message '" + exception.body().error().message() + "'");
             throw exception;
         }
 
@@ -408,16 +386,16 @@ public class OfflineFairPlay{
 
     /**
      * Polls Media Services for the status of the Job.
-     * 
+     *
      * @param manager       This is the entry point of Azure Media resource management.
      * @param resourceGroup The name of the resource group within the Azure subscription.
      * @param accountName   The Media Services account name.
      * @param transformName The name of the transform.
      * @param jobName       The name of the job you submitted.
-     * @return              The job.
+     * @return The job.
      */
     private static Job waitForJobToFinish(MediaManager manager, String resourceGroup, String accountName,
-            String transformName, String jobName) {
+                                          String transformName, String jobName) {
         final int SLEEP_INTERVAL = 60 * 1000;
 
         Job job = null;
@@ -455,12 +433,9 @@ public class OfflineFairPlay{
      * Create the content key policy that configures how the content key is
      * delivered to end clients via the Key Delivery component of Azure Media
      * Services.
-     * 
+     *
      * @param manager              The entry point of Azure Media resource
      *                             management.
-     * @param resourceGroup        The name of the resource group within the Azure
-     *                             subscription.
-     * @param accountName          The Media Services account name.
      * @param contentKeyPolicyName The name of the content key policy resource.
      * @return The content key policy.
      * @throws IOException
@@ -470,7 +445,7 @@ public class OfflineFairPlay{
      * @throws KeyStoreException
      */
     private static ContentKeyPolicy getOrCreateContentKeyPolicy(MediaManager manager, ConfigWrapper config,
-            String contentKeyPolicyName) throws KeyStoreException, NoSuchAlgorithmException, CertificateException,
+                                                                String contentKeyPolicyName) throws KeyStoreException, NoSuchAlgorithmException, CertificateException,
             FileNotFoundException, IOException {
         ContentKeyPolicy policy;
         try {
@@ -486,13 +461,13 @@ public class OfflineFairPlay{
 
             // Create a configuration for FairPlay licenses.
             ContentKeyPolicyFairPlayConfiguration fairPlayConfig = configureFairPlayLicenseTemplate(config.getAskHex(),
-                config.getFairPlayPfxPath(), config.getFairPlayPfxPassword());
+                    config.getFairPlayPfxPath(), config.getFairPlayPfxPassword());
 
             List<ContentKeyPolicyOption> options = new ArrayList<>();
 
             options.add(new ContentKeyPolicyOption()
-                .withConfiguration(fairPlayConfig)
-                .withRestriction(restriction));
+                    .withConfiguration(fairPlayConfig)
+                    .withRestriction(restriction));
 
             // Content Key Policy does not exist, create one.
             System.out.println("Creating a content key policy...");
@@ -508,14 +483,14 @@ public class OfflineFairPlay{
      * @param askHex                The ASK Hex string.
      * @param fairPlayPfxPath       The path of the PFX file.
      * @param fairPlayPfxPassword   The password of the PFX.
-     * @return                      ContentKeyPolicyFairPlayConfiguration
+     * @return ContentKeyPolicyFairPlayConfiguration
      * @throws KeyStoreException
      * @throws IOException
      * @throws CertificateException
      * @throws NoSuchAlgorithmException
      */
     private static ContentKeyPolicyFairPlayConfiguration configureFairPlayLicenseTemplate(String askHex,
-            String fairPlayPfxPath, String fairPlayPfxPassword) throws IOException {
+                                                                                          String fairPlayPfxPath, String fairPlayPfxPassword) throws IOException {
 
         byte[] askBytes = hexStringToBytes(askHex);
 
@@ -524,19 +499,19 @@ public class OfflineFairPlay{
         byte[] buf = new byte[(int) pfxFile.length()];
         inputStream.read(buf, 0, buf.length);
         inputStream.close();
-        
+
         String certBase64 = Base64.encodeBase64String(buf);
 
         ContentKeyPolicyFairPlayConfiguration objContentKeyPolicyPlayReadyConfiguration = new ContentKeyPolicyFairPlayConfiguration()
-            .withAsk(askBytes)
-            .withFairPlayPfx(certBase64)
-            .withFairPlayPfxPassword(fairPlayPfxPassword)
-            .withRentalAndLeaseKeyType(ContentKeyPolicyFairPlayRentalAndLeaseKeyType.DUAL_EXPIRY)
-            .withRentalDuration(0)
-            .withOfflineRentalConfiguration(new ContentKeyPolicyFairPlayOfflineRentalConfiguration()
-                .withStorageDurationSeconds(300000)
-                .withPlaybackDurationSeconds(500000));
-        
+                .withAsk(askBytes)
+                .withFairPlayPfx(certBase64)
+                .withFairPlayPfxPassword(fairPlayPfxPassword)
+                .withRentalAndLeaseKeyType(ContentKeyPolicyFairPlayRentalAndLeaseKeyType.DUAL_EXPIRY)
+                .withRentalDuration(0)
+                .withOfflineRentalConfiguration(new ContentKeyPolicyFairPlayOfflineRentalConfiguration()
+                        .withStorageDurationSeconds(300000)
+                        .withPlaybackDurationSeconds(500000));
+
         return objContentKeyPolicyPlayReadyConfiguration;
     }
 
@@ -548,20 +523,20 @@ public class OfflineFairPlay{
      * @param assetName             The name of the asset to be streamed.
      * @param locatorName           The locator name.
      * @param contentPolicyName     The content key policy name.
-     * @return                      StreamingLocator
+     * @return StreamingLocator
      */
     private static StreamingLocator createStreamingLocator(MediaManager manager, String resourceGroup, String accountName,
-        String assetName, String locatorName, String contentPolicyName) {
+                                                           String assetName, String locatorName, String contentPolicyName) {
         StreamingPolicy customStreamingPolicy = getOrCreateCustomStreamingPloliyForFairPlay(manager, resourceGroup,
-            accountName, FAIRPLAY_STREAMING_POLICY_NAME);
-        
+                accountName, FAIRPLAY_STREAMING_POLICY_NAME);
+
         System.out.println("Creating a streaming locator...");
         StreamingLocator locator = manager.streamingLocators().define(locatorName)
-                    .withExistingMediaservice(resourceGroup, accountName)
-                    .withAssetName(assetName)
-                    .withStreamingPolicyName(customStreamingPolicy.name())
-                    .withDefaultContentKeyPolicyName(contentPolicyName)
-                    .create();
+                .withExistingMediaservice(resourceGroup, accountName)
+                .withAssetName(assetName)
+                .withStreamingPolicyName(customStreamingPolicy.name())
+                .withDefaultContentKeyPolicyName(contentPolicyName)
+                .create();
 
         return locator;
     }
@@ -572,35 +547,34 @@ public class OfflineFairPlay{
      * @param resourceGroup         The name of the resource group within the Azure subscription.
      * @param accountName           The Media Services account name.
      * @param streamingPolicyName   The name of the streaming policy.
-     * @return                      StreamingPolicy
+     * @return StreamingPolicy
      */
     private static StreamingPolicy getOrCreateCustomStreamingPloliyForFairPlay(MediaManager manager, String resourceGroup,
-        String accountName, String streamingPolicyName) {
+                                                                               String accountName, String streamingPolicyName) {
         StreamingPolicy streamingPolicy;
         try {
             streamingPolicy = manager.streamingPolicies().getAsync(resourceGroup, accountName, streamingPolicyName).toBlocking().first();
-        }
-        catch (NoSuchElementException e) {
+        } catch (NoSuchElementException e) {
             streamingPolicy = null;
         }
 
         if (streamingPolicy == null) {
             streamingPolicy = manager.streamingPolicies().define(streamingPolicyName)
-                .withExistingMediaservice(resourceGroup, accountName)
-                .withCommonEncryptionCbcs(new CommonEncryptionCbcs()
-                    .withDrm(new CbcsDrmConfiguration()
-                        .withFairPlay(new StreamingPolicyFairPlayConfiguration()
-                            .withAllowPersistentLicense(true)))
-                    .withEnabledProtocols(new EnabledProtocols()
-                        .withHls(true)
-                        .withDash(true))    // Even though DASH under CBCS is not supported for either CSF or CMAF, HLS-CMAF-CBCS uses DASH-CBCS fragments in its HLS playlist
-                    .withContentKeys(new StreamingPolicyContentKeys()
-                        .withDefaultKey(new DefaultKey()
-                            .withLabel("CBCS_DefaultKeyLabel")
-                        )
+                    .withExistingMediaservice(resourceGroup, accountName)
+                    .withCommonEncryptionCbcs(new CommonEncryptionCbcs()
+                            .withDrm(new CbcsDrmConfiguration()
+                                    .withFairPlay(new StreamingPolicyFairPlayConfiguration()
+                                            .withAllowPersistentLicense(true)))
+                            .withEnabledProtocols(new EnabledProtocols()
+                                    .withHls(true)
+                                    .withDash(true))    // Even though DASH under CBCS is not supported for either CSF or CMAF, HLS-CMAF-CBCS uses DASH-CBCS fragments in its HLS playlist
+                            .withContentKeys(new StreamingPolicyContentKeys()
+                                    .withDefaultKey(new DefaultKey()
+                                            .withLabel("CBCS_DefaultKeyLabel")
+                                    )
+                            )
                     )
-                )
-                .create();
+                    .create();
         }
 
         return streamingPolicy;
@@ -608,22 +582,23 @@ public class OfflineFairPlay{
 
     /**
      * Builds the HLS streaming URL.
-     * @param manager               The entry point of Azure Media resource management.
-     * @param resourceGroup         The name of the resource group within the Azure subscription.
-     * @param accountName           The Media Services account name.
-     * @param locatorName           The name of the StreamingLocator that was created.
-     * @param streamingEndpoint     The streaming endpoint.
-     * @return                      HLS url.
+     *
+     * @param manager           The entry point of Azure Media resource management.
+     * @param resourceGroup     The name of the resource group within the Azure subscription.
+     * @param accountName       The Media Services account name.
+     * @param locatorName       The name of the StreamingLocator that was created.
+     * @param streamingEndpoint The streaming endpoint.
+     * @return HLS url.
      */
     private static String getHlsStreamingUrl(MediaManager manager, String resourceGroup, String accountName, String locatorName,
-        StreamingEndpoint streamingEndpoint) {
+                                             StreamingEndpoint streamingEndpoint) {
         String hlsPath = "";
 
         ListPathsResponse paths = manager.streamingLocators()
-            .listPathsAsync(resourceGroup, accountName, locatorName)
-            .toBlocking().first();
+                .listPathsAsync(resourceGroup, accountName, locatorName)
+                .toBlocking().first();
 
-        for (StreamingPath path: paths.streamingPaths()) {
+        for (StreamingPath path : paths.streamingPaths()) {
             if (path.paths().size() > 0) {
                 StringBuilder uriBuilder = new StringBuilder();
                 uriBuilder.append("https://").append(streamingEndpoint.hostName());
@@ -643,6 +618,7 @@ public class OfflineFairPlay{
      * Deletes the jobs and assets that were created.
      * Generally, you should clean up everything except objects
      * that you are planning to reuse (typically, you will reuse Transforms, and you will persist StreamingLocators).
+     *
      * @param manager               The entry point of Azure Media resource management.
      * @param resourceGroup         The name of the resource group within the Azure subscription.
      * @param accountName           The Media Services account name.
@@ -655,7 +631,7 @@ public class OfflineFairPlay{
      * @param streamingEndpointName The endpoint name.
      */
     private static void cleanup(MediaManager manager, String resourceGroup, String accountName, String transformName, String jobName,
-        String assetName, String locatorName,  String contentKeyPolicyName, boolean stopEndpoint, String streamingEndpointName) {
+                                String assetName, String locatorName, String contentKeyPolicyName, boolean stopEndpoint, String streamingEndpointName) {
         if (manager == null) {
             return;
         }
@@ -669,8 +645,7 @@ public class OfflineFairPlay{
         if (stopEndpoint) {
             // Because we started the endpoint, we'll stop it.
             manager.streamingEndpoints().stopAsync(resourceGroup, accountName, streamingEndpointName).await();
-        }
-        else {
+        } else {
             // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
             // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
             System.out.println("The endpoint ''" + streamingEndpointName + "'' is running. To halt further billing on the endpoint, please stop it in azure portal or AMS Explorer.");
