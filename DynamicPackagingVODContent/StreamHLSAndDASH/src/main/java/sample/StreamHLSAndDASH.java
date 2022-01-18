@@ -30,7 +30,7 @@ public class StreamHLSAndDASH {
     private static final String INPUT_MP4_RESOURCE = "video/ignite.mp4";
 
     // Please change this to your endpoint name
-    private static final String STREAMING_ENDPOINT_NAME = "se";
+    private static final String STREAMING_ENDPOINT_NAME = "default";
 
     public static void main(String[] args) {
         // Please make sure you have set configuration in
@@ -53,7 +53,6 @@ public class StreamHLSAndDASH {
         // Connect to media services, please see
         // https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
         // for details.
-
         TokenCredential credential = new ClientSecretCredentialBuilder()
                 .clientId(config.getAadClientId())
                 .clientSecret(config.getAadSecret())
@@ -62,7 +61,7 @@ public class StreamHLSAndDASH {
         AzureProfile profile = new AzureProfile(config.getAadTenantId(), config.getSubscriptionId(),
                 com.azure.core.management.AzureEnvironment.AZURE);
 
-        // MediaManager is the entry point to Azure Media resource management.
+        // MediaServiceManager is the entry point to Azure Media resource management.
         MediaServicesManager manager = MediaServicesManager.configure()
                 .withLogOptions(new HttpLogOptions().setLogLevel(HttpLogDetailLevel.BODY_AND_HEADERS))
                 .authenticate(credential, profile);
@@ -81,17 +80,26 @@ public class StreamHLSAndDASH {
         Scanner scanner = new Scanner(System.in);
         try {
 
-            MediaService account = manager.mediaservices().getByResourceGroup(config.getResourceGroup(),
-                    config.getAccountName());
+            // Create a new Transform using a preset name from the list of built in encoding
+            // presets.
+            // To use a custom encoding preset, you can change this to be a
+            // StandardEncoderPreset, which has support for codecs, formats, and filter
+            // definitions.
+            // This sample uses the 'ContentAwareEncoding' preset which chooses the best
+            // output based on an analysis of the input video.
 
-            account.update().withStorageAuthentication(null).apply();
+            List<TransformOutput> outputs = new ArrayList<>();
+            outputs.add(new TransformOutput().withPreset(
+                    new BuiltInStandardEncoderPreset().withPresetName(EncoderNamedPreset.CONTENT_AWARE_ENCODING)));
 
-            // Ensure that you have customized encoding Transform with builtin preset. This
-            // is really a one time
-            // setup operation.
-
-            Transform transform = ensureTransformExists(manager, config.getResourceGroup(),
-                    config.getAccountName(), TRANSFORM_NAME);
+            // Create the transform.
+            System.out.println("Creating a transform...");
+            Transform transform = manager.transforms()
+                    .define(TRANSFORM_NAME)
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
+                    .withOutputs(outputs)
+                    .create();
+            System.out.println("Transform created");
 
             // Create a new input Asset and upload the specified local video file into it.
             Asset inputAsset = createInputAsset(manager, config.getResourceGroup(),
@@ -102,9 +110,10 @@ public class StreamHLSAndDASH {
             // one. Note that we are using a unique asset name, there should not be a name
             // collision.
             System.out.println("Creating an output asset...");
-            Asset outputAsset = createAsset(manager, config.getResourceGroup(),
-                    config.getAccountName(),
-                    outputAssetName);
+            Asset outputAsset = manager.assets()
+                    .define(outputAssetName)
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
+                    .create();
 
             Job job = submitJob(manager, config.getResourceGroup(),
                     config.getAccountName(), transform.name(), jobName,
@@ -206,72 +215,6 @@ public class StreamHLSAndDASH {
                     outputAssetName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
             System.out.println("Done.");
         }
-    }
-
-    /**
-     * If the specified transform exists, get that transform. If the it does not
-     * exist, creates a new transform with the specified output. In this case, the
-     * output is set to encode a video using the passed in preset.
-     *
-     * @param manager       The entry point of Azure Media resource management.
-     * @param resourceGroup The name of the resource group within the Azure
-     *                      subscription.
-     * @param accountName   The Media Services account name.
-     * @param transformName The name of the transform.
-     * @return The transform found or created.
-     */
-    private static Transform ensureTransformExists(MediaServicesManager manager, String resourceGroup,
-            String accountName,
-            String transformName) {
-        Transform transform;
-        try {
-            // Does a Transform already exist with the desired name? Assume that an existing
-            // Transform with the desired name
-            // also uses the same recipe or Preset for processing content.
-            transform = manager.transforms()
-                    .get(resourceGroup, accountName, transformName);
-        } catch (ManagementException nse) {
-            // Media Services V3 throws an exception when not found.
-            transform = null;
-        } catch (Exception e) {
-            System.out.println("failed" + e.toString());
-            transform = null;
-        }
-
-        if (transform == null) {
-            List<TransformOutput> outputs = new ArrayList<>();
-            outputs.add(new TransformOutput().withPreset(
-                    new BuiltInStandardEncoderPreset().withPresetName(EncoderNamedPreset.ADAPTIVE_STREAMING)));
-
-            // Create the transform.
-            System.out.println("Creating a transform...");
-            transform = manager.transforms()
-                    .define(transformName)
-                    .withExistingMediaService(resourceGroup, accountName)
-                    .withOutputs(outputs)
-                    .create();
-        }
-
-        return transform;
-    }
-
-    /**
-     * Create an asset.
-     *
-     * @param manager       The entry point of Azure Media resource management.
-     * @param resourceGroup The name of the resource group within the Azure
-     *                      subscription.
-     * @param accountName   The Media Services account name.
-     * @param assetName     The name of the asset to be created. It is known to be
-     *                      unique.
-     * @return The asset created.
-     */
-    private static Asset createAsset(MediaServicesManager manager, String resourceGroup, String accountName,
-            String assetName) {
-        return manager.assets()
-                .define(assetName)
-                .withExistingMediaService(resourceGroup, accountName)
-                .create();
     }
 
     /**
@@ -482,30 +425,13 @@ public class StreamHLSAndDASH {
      */
     private static Asset createInputAsset(MediaServicesManager manager, String resourceGroupName, String accountName,
             String assetName, String mediaFile) throws Exception {
-        Asset asset;
-        try {
-            // In this example, we are assuming that the asset name is unique.
-            // If you already have an asset with the desired name, use the Assets.getAsync
-            // method
-            // to get the existing asset.
-            asset = manager.assets().get(resourceGroupName, accountName, assetName);
-        } catch (ManagementException nse) {
-            asset = null;
-        }
 
-        if (asset == null) {
-            System.out.println("Creating an input asset...");
-            // Call Media Services API to create an Asset.
-            // This method creates a container in storage for the Asset.
-            // The files (blobs) associated with the asset will be stored in this container.
-            asset = manager.assets().define(assetName).withExistingMediaService(resourceGroupName, accountName)
-                    .create();
-        } else {
-            // The asset already exists and we are going to overwrite it. In your
-            // application, if you don't want to overwrite
-            // an existing asset, use an unique name.
-            System.out.println("Warning: The asset named " + assetName + "already exists. It will be overwritten.");
-        }
+        System.out.println("Creating an input asset...");
+        // Call Media Services API to create an Asset.
+        // This method creates a container in storage for the Asset.
+        // The files (blobs) associated with the asset will be stored in this container.
+        Asset asset = manager.assets().define(assetName).withExistingMediaService(resourceGroupName, accountName)
+                .create();
 
         // Use Media Services API to get back a response that contains
         // SAS URL for the Asset container into which to upload blobs.
@@ -524,8 +450,8 @@ public class StreamHLSAndDASH {
 
         // Uploading from a local file:
         URI fileToUpload = StreamHLSAndDASH.class.getClassLoader().getResource(mediaFile).toURI(); // The file is a
-                                                                                                   // resource in
-                                                                                                   // CLASSPATH.
+        // resource in
+        // CLASSPATH.
         File file = new File(fileToUpload);
         BlobClient blob = container.getBlobClient(file.getName());
 
