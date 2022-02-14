@@ -1,5 +1,5 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>sample</groupId>
   <artifactId>BasicAESClearKey</artifactId>
@@ -14,29 +14,45 @@
       <version>1.1.1</version>
     </dependency>
     <dependency>
-      <groupId>com.microsoft.azure.mediaservices.v2020_05_01</groupId>
-      <artifactId>azure-mgmt-media</artifactId>
-      <version>1.0.0-beta</version>
+      <groupId>com.azure.resourcemanager</groupId>
+      <artifactId>azure-resourcemanager-mediaservices</artifactId>
+      <version>1.1.0-beta.2</version>
     </dependency>
     <dependency>
-      <groupId>com.microsoft.rest</groupId>
-      <artifactId>client-runtime</artifactId>
-      <version>1.6.8</version>
+      <groupId>commons-codec</groupId>
+      <artifactId>commons-codec</artifactId>
+      <version>1.15</version>
     </dependency>
     <dependency>
-      <groupId>com.microsoft.azure</groupId>
-      <artifactId>azure-client-authentication</artifactId>
-      <version>1.6.8</version>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-messaging-eventhubs</artifactId>
+      <version>5.10.3</version>
     </dependency>
     <dependency>
-      <groupId>com.microsoft.azure</groupId>
-      <artifactId>azure-arm-client-runtime</artifactId>
-      <version>1.6.8</version>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-messaging-eventhubs-checkpointstore-blob</artifactId>
+      <version>1.10.2</version>
     </dependency>
     <dependency>
-      <groupId>com.microsoft.azure</groupId>
-      <artifactId>azure-client-runtime</artifactId>
-      <version>1.6.8</version>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-core</artifactId>
+      <version>1.21.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-identity</artifactId>
+      <version>1.4.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-sdk-bom</artifactId>
+      <version>1.0.3</version>
+      <type>pom</type>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-storage-blob</artifactId>
+      <version>12.14.1</version>
     </dependency>
     <dependency>
       <groupId>io.jsonwebtoken</groupId>
@@ -56,12 +72,6 @@
       <scope>runtime</scope>
     </dependency>
     <dependency>
-      <groupId>com.azure</groupId>
-      <artifactId>azure-sdk-bom</artifactId>
-      <version>1.0.3</version>
-      <type>pom</type>
-    </dependency>
-    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
       <version>1.7.5</version>
@@ -70,11 +80,6 @@
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-log4j12</artifactId>
       <version>1.7.5</version>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>2.10.0.pr1</version>
     </dependency>
   </dependencies>
   <build>
