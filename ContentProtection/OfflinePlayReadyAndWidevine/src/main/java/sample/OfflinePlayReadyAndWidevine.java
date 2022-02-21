@@ -17,53 +17,25 @@ import java.util.Arrays;
 import com.azure.storage.blob.BlobContainerAsyncClient;
 import com.azure.storage.blob.BlobServiceAsyncClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
-import com.azure.storage.blob.models.ListBlobsOptions;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.microsoft.aad.adal4j.AuthenticationException;
-import com.microsoft.azure.AzureEnvironment;
-import com.microsoft.azure.credentials.ApplicationTokenCredentials;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ApiErrorException;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Asset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.BuiltInStandardEncoderPreset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicy;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyOpenRestriction;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyOption;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyPlayReadyConfiguration;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyPlayReadyContentEncryptionKeyFromHeader;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyPlayReadyContentType;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyPlayReadyExplicitAnalogTelevisionRestriction;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyPlayReadyLicense;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyPlayReadyLicenseType;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyPlayReadyPlayRight;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyPlayReadyUnknownOutputPassingOption;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ContentKeyPolicyWidevineConfiguration;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.EncoderNamedPreset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Job;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobInputHttp;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobOutput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobOutputAsset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobState;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ListPathsResponse;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpoint;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpointResourceState;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingLocator;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPath;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPolicyStreamingProtocol;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Transform;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.TransformOutput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
-import com.microsoft.rest.LogLevel;
 
-import org.joda.time.DateTime;
+import javax.naming.AuthenticationException;
+import com.azure.core.credential.TokenCredential;
+import com.azure.core.http.policy.HttpLogDetailLevel;
+import com.azure.core.http.policy.HttpLogOptions;
+import com.azure.core.management.profile.AzureProfile;
+import com.azure.resourcemanager.mediaservices.models.*;
+import com.azure.resourcemanager.mediaservices.MediaServicesManager;
+import com.azure.identity.ClientSecretCredentialBuilder;
 
 public class OfflinePlayReadyAndWidevine {
-    private static final String ADAPTIVE_STREAMING_TRANSFORM_NAME = "MyTransformWithAdaptiveStreamingPreset";
+    private static final String TRANSFORM_NAME = "MyTransform";
     private static final String CONTENT_KEY_POLICY_NAME = "DRMContentKeyPolicy";
     private static final String BASE_URI = "https://nimbuscdn-nimbuspm.streaming.mediaservices.windows.net/2b533311-b215-4409-80af-529c3e853622/";
     private static final String MP4_FILE_NAME = "Ignite-short.mp4";
     private static final String MULTI_DRM_CENC_STREAMING = "Predefined_MultiDrmCencStreaming";
-    private static final String DEFAULT_STREAMING_ENDPOINT_NAME = "se"; // Please change this to your Streaming Endpoint name.
+    private static final String DEFAULT_STREAMING_ENDPOINT_NAME = "default";
 
     public static void main(String[] args) {
         ConfigWrapper config = new ConfigWrapper();
@@ -82,13 +54,18 @@ public class OfflinePlayReadyAndWidevine {
     private static void runPlayReadyAndWidevineTest(ConfigWrapper config) {
         // Connect to media services, please see https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
         // for details.
-        ApplicationTokenCredentials credentials = new ApplicationTokenCredentials(config.getAadClientId(),
-                config.getAadTenantId(), config.getAadSecret(), AzureEnvironment.AZURE);
-        credentials.withDefaultSubscriptionId(config.getSubscriptionId());
+        TokenCredential credential = new ClientSecretCredentialBuilder()
+                .clientId(config.getAadClientId())
+                .clientSecret(config.getAadSecret())
+                .tenantId(config.getAadTenantId())
+                .build();
+        AzureProfile profile = new AzureProfile(config.getAadTenantId(), config.getSubscriptionId(),
+                com.azure.core.management.AzureEnvironment.AZURE);
 
-        // Get MediaManager, the entry point to Azure Media resource management.
-        MediaManager manager = MediaManager.configure().withLogLevel(LogLevel.BODY_AND_HEADERS)
-                .authenticate(credentials, credentials.defaultSubscriptionId());
+        // MediaServiceManager is the entry point to Azure Media resource management.
+        MediaServicesManager manager = MediaServicesManager.configure()
+                .withLogOptions(new HttpLogOptions().setLogLevel(HttpLogDetailLevel.BODY_AND_HEADERS))
+                .authenticate(credential, profile);
         // Signed in.
 
         // Create a unique suffix so that we don't have name collisions if you run the
@@ -106,12 +83,27 @@ public class OfflinePlayReadyAndWidevine {
         try {
             // Ensure that you have the desired encoding Transform. This is really a one
             // time setup operation.
-            Transform transform = getOrCreateTransform(manager, config.getResourceGroup(), config.getAccountName(),
-                    ADAPTIVE_STREAMING_TRANSFORM_NAME);
+            List<TransformOutput> outputs = new ArrayList<>();
+            outputs.add(new TransformOutput().withPreset(
+                    new BuiltInStandardEncoderPreset().withPresetName(EncoderNamedPreset.CONTENT_AWARE_ENCODING)));
 
-            // Output from the encoding Job must be written to an Asset, so let's create one
-            Asset outputAsset = createOutputAsset(manager, config.getResourceGroup(), config.getAccountName(),
-                    outputAssetName);
+            // Create the transform.
+            System.out.println("Creating a transform...");
+            Transform transform = manager.transforms()
+                    .define(TRANSFORM_NAME)
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
+                    .withOutputs(outputs)
+                    .create();
+            System.out.println("Transform created");
+
+            // Output from the encoding Job must be written to an Asset, so let's create
+            // one. Note that we are using a unique asset name, there should not be a name
+            // collision.
+            System.out.println("Creating an output asset...");
+            Asset outputAsset = manager.assets()
+                    .define(outputAssetName)
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
+                    .create();
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
                     transform.name(), outputAsset.name(), jobName);
@@ -134,10 +126,11 @@ public class OfflinePlayReadyAndWidevine {
                 BlobServiceAsyncClient client = new BlobServiceClientBuilder()
                         .connectionString(storageConnectionString)
                         .buildAsyncClient();
-                BlobContainerAsyncClient container = client.getBlobContainerAsyncClient(config.getStorageContainerName());
+                BlobContainerAsyncClient container = client
+                        .getBlobContainerAsyncClient(config.getStorageContainerName());
                 container.listBlobs().subscribe(blobItem -> {
-                            container.getBlobAsyncClient(blobItem.getName()).delete();
-                        });
+                    container.getBlobAsyncClient(blobItem.getName()).delete();
+                });
 
                 // Create a new host to process events from an Event Hub.
                 Object monitor = new Object();
@@ -176,12 +169,17 @@ public class OfflinePlayReadyAndWidevine {
                 }
 
                 // Get the latest status of the job.
-                job = manager.jobs().getAsync(config.getResourceGroup(), config.getAccountName(), transform.name(), jobName).toBlocking().first();
+                job = manager.jobs()
+                        .get(config.getResourceGroup(), config.getAccountName(), transform.name(), jobName);
             } catch (Exception e) {
-                System.out.println("Warning: Failed to connect to Event Hub, please see README for Event Hub and storage settings.");
-                // if Event Grid or Event Hub is not configured, We will fall-back on polling instead.
-                // Polling is not a recommended best practice for production applications because of the latency it introduces.
-                // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
+                System.out.println(
+                        "Warning: Failed to connect to Event Hub, please refer README for Event Hub and storage settings.");
+                // if Event Grid or Event Hub is not configured, We will fall-back on polling
+                // instead.
+                // Polling is not a recommended best practice for production applications
+                // because of the latency it introduces.
+                // Overuse of this API may trigger throttling. Developers should instead use
+                // Event Grid.
                 System.out.println("Failed to start Event Grid monitoring, will use polling job status instead...");
                 job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
                         transform.name(), jobName);
@@ -193,33 +191,35 @@ public class OfflinePlayReadyAndWidevine {
             if (job.state() == JobState.FINISHED) {
                 // Create the content key policy that configures how the content key is delivered
                 // to end clients via the Key Delivery component of Azure Media Services.
-                ContentKeyPolicy policy = getOrCreateContentKeyPolicy(manager, config.getResourceGroup(),
+                ContentKeyPolicy policy = ensureContentKeyPolicyExists(manager, config.getResourceGroup(),
                         config.getAccountName(), CONTENT_KEY_POLICY_NAME);
 
                 StreamingLocator locator = manager.streamingLocators().define(locatorName)
-                        .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                        .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
                         .withAssetName(outputAssetName)
                         .withStreamingPolicyName(MULTI_DRM_CENC_STREAMING)
                         .withDefaultContentKeyPolicyName(policy.name())
                         .create();
 
                 StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-                        .getAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME)
-                        .toBlocking().first();
+                        .get(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME);
 
                 if (streamingEndpoint != null) {
                     // Start The Streaming Endpoint if it is not running.
                     if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
-                        manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(), DEFAULT_STREAMING_ENDPOINT_NAME).await();
+                        manager.streamingEndpoints().start(config.getResourceGroup(), config.getAccountName(),
+                                DEFAULT_STREAMING_ENDPOINT_NAME);
 
                         // We started the endpoint, we should stop it in cleanup.
                         stopEndpoint = true;
                     }
 
-                    String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(), locator.name(), streamingEndpoint);
+                    String dashPath = getDASHStreamingUrl(manager, config.getResourceGroup(), config.getAccountName(),
+                            locator.name(), streamingEndpoint);
 
                     System.out.println();
-                    System.out.println("Copy and paste the following URL in your browser to play back the file in the Azure Media Player.");
+                    System.out.println(
+                            "Copy and paste the following URL in your browser to play back the file in the Azure Media Player.");
                     System.out.println("You can use Edge/IE11 for PlayReady.");
                     System.out.println();
 
@@ -239,10 +239,6 @@ public class OfflinePlayReadyAndWidevine {
                 if (cause instanceof AuthenticationException) {
                     System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
                     break;
-                } else if (cause instanceof ApiErrorException) {
-                    ApiErrorException apiException = (ApiErrorException) cause;
-                    System.out.println("ERROR: " + apiException.body().error().message());
-                    break;
                 }
                 cause = cause.getCause();
             }
@@ -260,48 +256,11 @@ public class OfflinePlayReadyAndWidevine {
                 eventProcessorHost = null;
             }
 
-            cleanup(manager, config.getResourceGroup(), config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName,
-                    outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME, stopEndpoint, DEFAULT_STREAMING_ENDPOINT_NAME);
+            cleanup(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME,
+                    jobName,
+                    outputAssetName, locatorName, CONTENT_KEY_POLICY_NAME, stopEndpoint,
+                    DEFAULT_STREAMING_ENDPOINT_NAME);
         }
-    }
-
-    /**
-     * If the specified transform exists, get that transform. If the it does not
-     * exist, creates a new transform with the specified output. In this case, the
-     * output is set to encode a video using one of the built-in encoding presets.
-     *
-     * @param manager       The entry point of Azure Media resource management.
-     * @param resourceGroup The name of the resource group within the Azure subscription.
-     * @param accountName   The Media Services account name.
-     * @param transformName The name of the transform.
-     * @return The transform found or created.
-     */
-    private static Transform getOrCreateTransform(MediaManager manager, String resourceGroup, String accountName,
-                                                  String transformName) {
-        Transform transform;
-        try {
-            // Does a Transform already exist with the desired name? Assume that an existing
-            // Transform with the desired name.
-            transform = manager.transforms().getAsync(resourceGroup, accountName, transformName).toBlocking().first();
-        } catch (NoSuchElementException e) {
-            transform = null; // Media Services V3 throws an exception when not found.
-        }
-
-        if (transform == null) {
-            // Start by defining the desired outputs.
-            BuiltInStandardEncoderPreset preset = new BuiltInStandardEncoderPreset()
-                    .withPresetName(EncoderNamedPreset.ADAPTIVE_STREAMING);
-            TransformOutput transformOutput = new TransformOutput().withPreset(preset);
-            List<TransformOutput> outputs = new ArrayList<TransformOutput>();
-            outputs.add(transformOutput);
-
-            // Create the Transform with the output defined above.
-            System.out.println("Creating a transform...");
-            transform = manager.transforms().define(transformName).withExistingMediaservice(resourceGroup, accountName)
-                    .withOutputs(outputs).create();
-        }
-
-        return transform;
     }
 
     /**
@@ -314,11 +273,11 @@ public class OfflinePlayReadyAndWidevine {
      * @param assetName         The output asset name.
      * @return The output asset created.
      */
-    private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
+    private static Asset createOutputAsset(MediaServicesManager manager, String resourceGroupName, String accountName,
                                            String assetName) {
         Asset outputAsset;
         try {
-            outputAsset = manager.assets().getAsync(resourceGroupName, accountName, assetName).toBlocking().first();
+            outputAsset = manager.assets().get(resourceGroupName, accountName, assetName);
         } catch (NoSuchElementException nse) {
             outputAsset = null;
         }
@@ -326,7 +285,7 @@ public class OfflinePlayReadyAndWidevine {
         if (outputAsset == null) {
             System.out.println("Creating an output asset...");
             outputAsset = manager.assets().define(assetName)
-                    .withExistingMediaservice(resourceGroupName, accountName)
+                    .withExistingMediaService(resourceGroupName, accountName)
                     .create();
         } else {
             // The asset already exists and we are going to overwrite it. In your application, if you don't want to overwrite
@@ -350,7 +309,7 @@ public class OfflinePlayReadyAndWidevine {
      * @param jobName           The (unique) name of the job.
      * @return The job created.
      */
-    private static Job submitJob(MediaManager manager, String resourceGroupName, String accountName,
+    private static Job submitJob(MediaServicesManager manager, String resourceGroupName, String accountName,
                                  String transformName, String outputAssetName, String jobName) {
         // This example shows how to encode from any HTTPs source URL - a new feature of the v3 API.
         // Change the URL to any accessible HTTPs URL or SAS URL from Azure.
@@ -368,19 +327,12 @@ public class OfflinePlayReadyAndWidevine {
         // to get the existing job. In Media Services v3, the Get method on entities returns null
         // if the entity doesn't exist (a case-insensitive check on the name).
         Job job;
-        try {
             System.out.println("Creating a job...");
             job = manager.jobs().define(jobName)
                     .withExistingTransform(resourceGroupName, accountName, transformName)
                     .withInput(jobInput)
                     .withOutputs(jobOutputs)
                     .create();
-        } catch (ApiErrorException exception) {
-            System.out.println("ERROR: API call failed with error code " + exception.body().error().code() +
-                    " and message '" + exception.body().error().message() + "'");
-            throw exception;
-        }
-
         return job;
     }
 
@@ -394,7 +346,7 @@ public class OfflinePlayReadyAndWidevine {
      * @param jobName       The name of the job you submitted.
      * @return The job.
      */
-    private static Job waitForJobToFinish(MediaManager manager, String resourceGroup, String accountName,
+    private static Job waitForJobToFinish(MediaServicesManager manager, String resourceGroup, String accountName,
                                           String transformName, String jobName) {
         final int SLEEP_INTERVAL = 60 * 1000;
 
@@ -402,7 +354,7 @@ public class OfflinePlayReadyAndWidevine {
         boolean exit = false;
 
         do {
-            job = manager.jobs().getAsync(resourceGroup, accountName, transformName, jobName).toBlocking().first();
+            job = manager.jobs().get(resourceGroup, accountName, transformName, jobName);
 
             if (job.state() == JobState.FINISHED || job.state() == JobState.ERROR || job.state() == JobState.CANCELED) {
                 exit = true;
@@ -440,13 +392,12 @@ public class OfflinePlayReadyAndWidevine {
      * @return The content key policy.
      * @throws JsonProcessingException
      */
-    private static ContentKeyPolicy getOrCreateContentKeyPolicy(MediaManager manager, String resourceGroup,
-                                                                String accountName, String contentKeyPolicyName) throws JsonProcessingException {
+    private static ContentKeyPolicy ensureContentKeyPolicyExists(MediaServicesManager manager, String resourceGroup,
+                                                                 String accountName, String contentKeyPolicyName)  throws JsonProcessingException {
         ContentKeyPolicy policy;
         try {
             // Get the policy if exists.
-            policy = manager.contentKeyPolicies().getAsync(resourceGroup, accountName, contentKeyPolicyName)
-                    .toBlocking().first();
+            policy = manager.contentKeyPolicies().get(resourceGroup, accountName, contentKeyPolicyName);
         } catch (NoSuchElementException e) {
             policy = null;
         }
@@ -470,7 +421,7 @@ public class OfflinePlayReadyAndWidevine {
             // Content Key Policy does not exist, create one.
             System.out.println("Creating a content key policy...");
             policy = manager.contentKeyPolicies().define(contentKeyPolicyName)
-                    .withExistingMediaservice(resourceGroup, accountName).withOptions(options).create();
+                    .withExistingMediaService(resourceGroup, accountName).withOptions(options).create();
         }
 
         return policy;
@@ -484,7 +435,6 @@ public class OfflinePlayReadyAndWidevine {
     private static ContentKeyPolicyPlayReadyConfiguration configurePlayReadyLicenseTemplate() {
         ContentKeyPolicyPlayReadyLicense objContentKeyPolicyPlayReadyLicense = new ContentKeyPolicyPlayReadyLicense()
                 .withAllowTestDevices(true)
-                .withBeginDate(new DateTime(2019, 8, 15, 0, 0))
                 .withContentKeyLocation(new ContentKeyPolicyPlayReadyContentEncryptionKeyFromHeader())
                 .withContentType(ContentKeyPolicyPlayReadyContentType.ULTRA_VIOLET_STREAMING)
                 .withLicenseType(ContentKeyPolicyPlayReadyLicenseType.PERSISTENT)
@@ -515,17 +465,16 @@ public class OfflinePlayReadyAndWidevine {
      * @param streamingEndpoint The streaming endpoint.
      * @return DASH url.
      */
-    private static String getDASHStreamingUrl(MediaManager manager, String resourceGroup, String accountName, String locatorName, StreamingEndpoint streamingEndpoint) {
+    private static String getDASHStreamingUrl(MediaServicesManager manager, String resourceGroup, String accountName, String locatorName, StreamingEndpoint streamingEndpoint) {
         String dashPath = "";
 
         ListPathsResponse paths = manager.streamingLocators()
-                .listPathsAsync(resourceGroup, accountName, locatorName)
-                .toBlocking().first();
+                .listPaths(resourceGroup, accountName, locatorName);
 
         for (StreamingPath path : paths.streamingPaths()) {
             if (path.paths().size() > 0) {
                 StringBuilder uriBuilder = new StringBuilder();
-                uriBuilder.append("https://").append(streamingEndpoint.hostName());
+                uriBuilder.append("https://").append(streamingEndpoint.hostname());
 
                 // Look for just the DASH path and generate a URL for the Azure Media Player to playback the content with the AES token to decrypt.
                 if (path.streamingProtocol() == StreamingPolicyStreamingProtocol.DASH) {
@@ -554,21 +503,24 @@ public class OfflinePlayReadyAndWidevine {
      * @param stopEndpoint          Stop endpoint if true, otherwise keep endpoint running.
      * @param streamingEndpointName The endpoint name.
      */
-    public static void cleanup(MediaManager manager, String resourceGroup, String accountName, String transformName, String jobName,
-                               String assetName, String locatorName, String contentKeyPolicyName, boolean stopEndpoint, String streamingEndpointName) {
+    public static void cleanup(MediaServicesManager manager, String resourceGroup, String accountName,
+                               String transformName,
+                               String jobName,
+                               String assetName, String locatorName, String contentKeyPolicyName, boolean stopEndpoint,
+                               String streamingEndpointName) {
         if (manager == null) {
             return;
         }
 
-        manager.jobs().deleteAsync(resourceGroup, accountName, transformName, jobName).await();
-        manager.assets().deleteAsync(resourceGroup, accountName, assetName).await();
+        manager.jobs().delete(resourceGroup, accountName, transformName, jobName);
+        manager.assets().delete(resourceGroup, accountName, assetName);
 
-        manager.streamingLocators().deleteAsync(resourceGroup, accountName, locatorName).await();
-        manager.contentKeyPolicies().deleteAsync(resourceGroup, accountName, contentKeyPolicyName).await();
+        manager.streamingLocators().delete(resourceGroup, accountName, locatorName);
+        manager.contentKeyPolicies().delete(resourceGroup, accountName, contentKeyPolicyName);
 
         if (stopEndpoint) {
             // Because we started the endpoint, we'll stop it.
-            manager.streamingEndpoints().stopAsync(resourceGroup, accountName, streamingEndpointName).await();
+            manager.streamingEndpoints().stop(resourceGroup, accountName, streamingEndpointName);
         } else {
             // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
             // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
