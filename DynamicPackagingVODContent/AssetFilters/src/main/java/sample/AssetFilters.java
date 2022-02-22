@@ -6,55 +6,31 @@ package sample;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.UUID;
+import java.net.URI;
+import java.time.OffsetDateTime;
 
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobContainerClientBuilder;
-import com.microsoft.azure.AzureEnvironment;
-import com.microsoft.azure.credentials.ApplicationTokenCredentials;
-import com.microsoft.aad.adal4j.AuthenticationException;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.AccountFilter;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ApiErrorException;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Asset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.AssetContainerPermission;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.AssetContainerSas;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.AssetFilter;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.BuiltInStandardEncoderPreset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.EncoderNamedPreset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.FilterTrackPropertyCompareOperation;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.FilterTrackPropertyCondition;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.FilterTrackPropertyType;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.FilterTrackSelection;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Job;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobInput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobInputAsset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobOutput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobOutputAsset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobState;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ListContainerSasInput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ListPathsResponse;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.PresentationTimeRange;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpoint;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpointResourceState;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingLocator;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPath;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPolicyStreamingProtocol;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Transform;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.TransformOutput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
-import com.microsoft.rest.LogLevel;
+import com.azure.core.credential.TokenCredential;
+import com.azure.core.http.policy.HttpLogDetailLevel;
+import com.azure.core.http.policy.HttpLogOptions;
+import com.azure.core.management.exception.ManagementException;
+import com.azure.core.management.profile.AzureProfile;
+import com.azure.resourcemanager.mediaservices.models.*;
+import com.azure.resourcemanager.mediaservices.MediaServicesManager;
+import com.azure.identity.ClientSecretCredentialBuilder;
 
-import org.joda.time.DateTime;
+import javax.naming.AuthenticationException;
 
 public class AssetFilters {
-    private static final String ADAPTIVE_STREAMING_TRANSFORM_NAME = "MyTransformWithAdaptiveStreamingPreset";
+    private static final String TRANSFORM_NAME = "MyTransformWithAdaptiveStreamingPreset";
     private static final String INPUT_MP4_RESOURCE = "video/ignite.mp4";
 
     // Please change this to your endpoint name
-    private static final String STREAMING_ENDPOINT_NAME = "se";
+    private static final String STREAMING_ENDPOINT_NAME = "default";
 
     public static void main(String[] args) {
         // Please make sure you have set configuration in resources/conf/appsettings.json. For more information, see
@@ -74,13 +50,18 @@ public class AssetFilters {
     private static void runAssetFiltersSample(ConfigWrapper config) {
         // Connect to media services, please see https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
         // for details.
-        ApplicationTokenCredentials credentials = new ApplicationTokenCredentials(config.getAadClientId(),
-                config.getAadTenantId(), config.getAadSecret(), AzureEnvironment.AZURE);
-        credentials.withDefaultSubscriptionId(config.getSubscriptionId());
+        TokenCredential credential = new ClientSecretCredentialBuilder()
+                .clientId(config.getAadClientId())
+                .clientSecret(config.getAadSecret())
+                .tenantId(config.getAadTenantId())
+                .build();
+        AzureProfile profile = new AzureProfile(config.getAadTenantId(), config.getSubscriptionId(),
+                com.azure.core.management.AzureEnvironment.AZURE);
 
-        // MediaManager is the entry point to Azure Media resource management.
-        MediaManager manager = MediaManager.configure().withLogLevel(LogLevel.BODY_AND_HEADERS)
-                .authenticate(credentials, credentials.defaultSubscriptionId());
+        // MediaServiceManager is the entry point to Azure Media resource management.
+        MediaServicesManager manager = MediaServicesManager.configure()
+                .withLogOptions(new HttpLogOptions().setLogLevel(HttpLogDetailLevel.BODY_AND_HEADERS))
+                .authenticate(credential, profile);
         // Signed in.
 
         // Creating a unique suffix so that we don't have name collisions if you run the sample
@@ -99,8 +80,26 @@ public class AssetFilters {
         try {
             // Ensure that you have customized encoding Transform with builtin preset. This is really a one time
             // setup operation.
-            Transform transform = ensureTransformExists(manager, config.getResourceGroup(),
-                    config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME);
+            // Create a new Transform using a preset name from the list of built in encoding
+            // presets.
+            // To use a custom encoding preset, you can change this to be a
+            // StandardEncoderPreset, which has support for codecs, formats, and filter
+            // definitions.
+            // This sample uses the 'ContentAwareEncoding' preset which chooses the best
+            // output based on an analysis of the input video.
+
+            List<TransformOutput> outputs = new ArrayList<>();
+            outputs.add(new TransformOutput().withPreset(
+                    new BuiltInStandardEncoderPreset().withPresetName(EncoderNamedPreset.CONTENT_AWARE_ENCODING)));
+
+            // Create the transform.
+            System.out.println("Creating a transform...");
+            Transform transform = manager.transforms()
+                    .define(TRANSFORM_NAME)
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
+                    .withOutputs(outputs)
+                    .create();
+            System.out.println("Transform created");
 
             // Create a new input Asset and upload the specified local video file into it.
             Asset inputAsset = createInputAssetAndUploadVideo(manager, config.getResourceGroup(), config.getAccountName(), inputAssetName,
@@ -108,10 +107,13 @@ public class AssetFilters {
 
             // Output from the encoding Job must be written to an Asset, so let's create one. Note that we
             // are using a unique asset name, there should not be a name collision.
-            Asset outputAsset = createAsset(manager, config.getResourceGroup(), config.getAccountName(),
-                    outputAssetName);
+            Asset outputAsset = manager.assets()
+                    .define(outputAssetName)
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
+                    .create();
 
-            Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(), transform.name(), jobName,
+            Job job = submitJob(manager, config.getResourceGroup(),
+                    config.getAccountName(), transform.name(), jobName,
                     inputAsset.name(), outputAsset.name());
 
             long startedTime = System.currentTimeMillis();
@@ -120,7 +122,8 @@ public class AssetFilters {
             // applications because of the latency it introduces. Overuse of this API may trigger throttling. Developers
             // should instead use Event Grid. To see how to implement the event grid, see the sample
             // https://github.com/Azure-Samples/media-services-v3-java/tree/master/ContentProtection/BasicAESClearKey.
-            job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(), transform.name(),
+            job = waitForJobToFinish(manager, config.getResourceGroup(),
+                    config.getAccountName(), transform.name(),
                     jobName);
 
             long elapsed = (System.currentTimeMillis() - startedTime) / 1000; // Elapsed time in seconds
@@ -134,19 +137,19 @@ public class AssetFilters {
                 // a StreamingLocator. 
                 System.out.println("Creating a streaming locator...\n");
                 StreamingLocator locator = manager.streamingLocators().define(locatorName)
-                        .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                        .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
                         .withAssetName(outputAssetName)
                         .withStreamingPolicyName("Predefined_ClearStreamingOnly")
                         .create();
 
                 StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-                        .getAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME)
-                        .toBlocking().first();
+                        .get(config.getResourceGroup(), config.getAccountName(),
+                                STREAMING_ENDPOINT_NAME);
 
                 if (streamingEndpoint != null) {
                     // Start The Streaming Endpoint if it is not running.
                     if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
-                        manager.streamingEndpoints().startAsync(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME).await();
+                        manager.streamingEndpoints().start(config.getResourceGroup(), config.getAccountName(), STREAMING_ENDPOINT_NAME);
 
                         // We started the endpoint, we should stop it in cleanup.
                         stopEndpoint = true;
@@ -193,13 +196,13 @@ public class AssetFilters {
 
                 // Create a new StreamingLocator and associate filters with it.
                 System.out.println("Next, we will associate the filters with a new streaming locator.");
-                manager.streamingLocators().deleteAsync(config.getResourceGroup(), config.getAccountName(), locatorName).await(); // Delete the old streaming locator.
+                manager.streamingLocators().delete(config.getResourceGroup(), config.getAccountName(), locatorName); // Delete the old streaming locator.
                 List<String> filters = new ArrayList<>();
                 filters.add(assetFilter.name());
                 filters.add(accountFilter.name());
                 System.out.println("Creating a new streaming locator...");
                 locator = manager.streamingLocators().define(locatorName)
-                        .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                        .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
                         .withAssetName(outputAssetName)
                         .withStreamingPolicyName("Predefined_ClearStreamingOnly")
                         .withFilters(filters)           // Associate filters
@@ -226,9 +229,9 @@ public class AssetFilters {
                 if (cause instanceof AuthenticationException) {
                     System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
                     break;
-                } else if (cause instanceof ApiErrorException) {
-                    ApiErrorException apiException = (ApiErrorException) cause;
-                    System.out.println("ERROR: " + apiException.body().error().message());
+                } else if (cause instanceof ManagementException) {
+                    ManagementException apiException = (ManagementException) cause;
+                    System.out.println("ERROR: " + apiException.getValue().getMessage());
                     break;
                 }
                 cause = cause.getCause();
@@ -241,7 +244,7 @@ public class AssetFilters {
             if (scanner != null) {
                 scanner.close();
             }
-            cleanup(manager, config.getResourceGroup(), config.getAccountName(), ADAPTIVE_STREAMING_TRANSFORM_NAME, jobName,
+            cleanup(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME, jobName,
                     inputAssetName, outputAssetName, accountFilterName, locatorName, stopEndpoint, STREAMING_ENDPOINT_NAME);
             System.out.println("Done.");
         }
@@ -254,7 +257,7 @@ public class AssetFilters {
      * @param accountFilterName The AccountFilter name.
      * @return The AccountFilter created.
      */
-    private static AccountFilter createAccountFilter(MediaManager manager, String resourceGroup, String accountName, String accountFilterName) {
+    private static AccountFilter createAccountFilter(MediaServicesManager manager, String resourceGroup, String accountName, String accountFilterName) {
         // Create tracks.
         List<FilterTrackPropertyCondition> audioConditions = new ArrayList<>();
         audioConditions.add(new FilterTrackPropertyCondition()
@@ -282,53 +285,11 @@ public class AssetFilters {
 
         AccountFilter accountFilter = manager.accountFilters()
                 .define(accountFilterName)
-                .withExistingMediaservice(resourceGroup, accountName)
+                .withExistingMediaService(resourceGroup, accountName)
                 .withTracks(includedTracks)
                 .create();
 
         return accountFilter;
-    }
-
-    /**
-     * If the specified transform exists, get that transform. If the it does not
-     * exist, creates a new transform with the specified output. In this case, the
-     * output is set to encode a video using the passed in preset.
-     *
-     * @param manager       The entry point of Azure Media resource management.
-     * @param resourceGroup The name of the resource group within the Azure subscription.
-     * @param accountName   The Media Services account name.
-     * @param transformName The name of the transform.
-     * @param preset        The preset to be used in the transform.
-     * @return The transform found or created.
-     */
-    private static Transform ensureTransformExists(MediaManager manager, String resourceGroup, String accountName,
-                                                   String transformName) {
-        Transform transform;
-        try {
-            // Does a Transform already exist with the desired name? Assume that an existing Transform with the desired name
-            // also uses the same recipe or Preset for processing content.
-            transform = manager.transforms()
-                    .getAsync(resourceGroup, accountName, transformName)
-                    .toBlocking()
-                    .first();
-        } catch (NoSuchElementException nse) {
-            // Media Services V3 throws an exception when not found.
-            transform = null;
-        }
-
-        if (transform == null) {
-            List<TransformOutput> outputs = new ArrayList<>();
-            outputs.add(new TransformOutput().withPreset(new BuiltInStandardEncoderPreset().withPresetName(EncoderNamedPreset.ADAPTIVE_STREAMING)));
-
-            // Create the transform.
-            transform = manager.transforms()
-                    .define(transformName)
-                    .withExistingMediaservice(resourceGroup, accountName)
-                    .withOutputs(outputs)
-                    .create();
-        }
-
-        return transform;
     }
 
     /**
@@ -340,27 +301,6 @@ public class AssetFilters {
      * @param assetName     The name of the asset to be created. It is known to be unique.
      * @return The asset created.
      */
-    private static Asset createAsset(MediaManager manager, String resourceGroup, String accountName,
-                                     String assetName) {
-        Asset asset;
-        try {
-            asset = manager.assets().getAsync(resourceGroup, accountName, assetName).toBlocking().first();
-        } catch (NoSuchElementException nse) {
-            asset = null;
-        }
-
-        if (asset == null) {
-            asset = manager.assets().define(assetName)
-                    .withExistingMediaservice(resourceGroup, accountName)
-                    .create();
-        } else {
-            // The asset already exists and we are going to overwrite it. In your application, if you don't want to overwrite
-            // an existing asset, use an unique name.
-            System.out.println("Warning: The asset named " + assetName + "already exists. It will be overwritten.");
-        }
-
-        return asset;
-    }
 
     /**
      * Create and submit a job.
@@ -370,11 +310,11 @@ public class AssetFilters {
      * @param accountName     The Media Services account name.
      * @param transformName   The name of the transform.
      * @param jobName         The name of the job.
-     * @param jobInput        The input to the job.
      * @param outputAssetName The name of the asset that the job writes to.
      * @return The job created.
      */
-    private static Job submitJob(MediaManager manager, String resourceGroup, String accountName, String transformName,
+    private static Job submitJob(MediaServicesManager manager, String resourceGroup, String accountName,
+                                 String transformName,
                                  String jobName, String inputAssetName, String outputAssetName) {
         // Use the name of the created input asset to create the job input.
         JobInput jobInput = new JobInputAsset().withAssetName(inputAssetName);
@@ -391,9 +331,9 @@ public class AssetFilters {
                     .withInput(jobInput)
                     .withOutputs(jobOutputs)
                     .create();
-        } catch (ApiErrorException exception) {
-            System.out.println("ERROR: API call failed with error code " + exception.body().error().code() +
-                    " and message '" + exception.body().error().message() + "'");
+        } catch (ManagementException exception) {
+            System.out.println("ERROR: API call failed with error code " + exception.getValue().getCode() +
+                    " and message '" + exception.getValue().getMessage() + "'");
             throw exception;
         }
 
@@ -410,7 +350,7 @@ public class AssetFilters {
      * @param jobName       The name of the job submitted.
      * @return The job.
      */
-    private static Job waitForJobToFinish(MediaManager manager, String resourceGroup, String accountName,
+    private static Job waitForJobToFinish(MediaServicesManager manager, String resourceGroup, String accountName,
                                           String transformName, String jobName) {
         final int SLEEP_INTERVAL = 10 * 1000;
 
@@ -418,7 +358,7 @@ public class AssetFilters {
         boolean exit = false;
 
         do {
-            job = manager.jobs().getAsync(resourceGroup, accountName, transformName, jobName).toBlocking().first();
+            job = manager.jobs().get(resourceGroup, accountName, transformName, jobName);
 
             if (job.state() == JobState.FINISHED || job.state() == JobState.ERROR || job.state() == JobState.CANCELED) {
                 exit = true;
@@ -455,17 +395,16 @@ public class AssetFilters {
      * @param streamingEndpoint The streaming endpoint.
      * @return List of streaming urls.
      */
-    private static List<String> getDashStreamingUrls(MediaManager manager, String resourceGroup, String accountName,
+    private static List<String> getDashStreamingUrls(MediaServicesManager manager, String resourceGroup, String accountName,
                                                      String locatorName, StreamingEndpoint streamingEndpoint) {
         List<String> streamingUrls = new ArrayList<>();
 
-        ListPathsResponse paths = manager.streamingLocators().listPathsAsync(resourceGroup, accountName, locatorName)
-                .toBlocking().first();
+        ListPathsResponse paths = manager.streamingLocators().listPaths(resourceGroup, accountName, locatorName);
 
         for (StreamingPath path : paths.streamingPaths()) {
             StringBuilder uriBuilder = new StringBuilder();
             uriBuilder.append("https://")
-                    .append(streamingEndpoint.hostName())
+                    .append(streamingEndpoint.hostname())
                     .append("/")
                     .append(path.paths().get(0));
 
@@ -491,22 +430,22 @@ public class AssetFilters {
      * @param stopEndpoint          Stop endpoint if true, otherwise keep endpoint running.
      * @param streamingEndpointName The endpoint name.
      */
-    private static void cleanup(MediaManager manager, String resourceGroupName, String accountName, String transformName, String jobName,
+    private static void cleanup(MediaServicesManager manager, String resourceGroupName, String accountName, String transformName, String jobName,
                                 String inputAssetName, String outputAssetName, String accountFilterName, String streamingLocatorName, boolean stopEndpoint,
                                 String streamingEndpointName) {
         if (manager == null) {
             return;
         }
 
-        manager.jobs().deleteAsync(resourceGroupName, accountName, transformName, jobName).await();
-        manager.assets().deleteAsync(resourceGroupName, accountName, inputAssetName).await();
-        manager.assets().deleteAsync(resourceGroupName, accountName, outputAssetName).await();
-        manager.accountFilters().deleteAsync(resourceGroupName, accountName, accountFilterName).await();
-        manager.streamingLocators().deleteAsync(resourceGroupName, accountName, streamingLocatorName).await();
+        manager.jobs().delete(resourceGroupName, accountName, transformName, jobName);
+        manager.assets().delete(resourceGroupName, accountName, inputAssetName);
+        manager.assets().delete(resourceGroupName, accountName, outputAssetName);
+        manager.accountFilters().delete(resourceGroupName, accountName, accountFilterName);
+        manager.streamingLocators().delete(resourceGroupName, accountName, streamingLocatorName);
 
         if (stopEndpoint) {
             // Because we started the endpoint, we'll stop it.
-            manager.streamingEndpoints().stopAsync(resourceGroupName, accountName, streamingEndpointName).await();
+            manager.streamingEndpoints().stop(resourceGroupName, accountName, streamingEndpointName);
         } else {
             // We will keep the endpoint running because it was not started by this sample. Please note, There are costs to keep it running.
             // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
@@ -524,38 +463,24 @@ public class AssetFilters {
      * @param mediaFile         The path of a media file to be uploaded into the asset.
      * @return The asset.
      */
-    private static Asset createInputAssetAndUploadVideo(MediaManager manager, String resourceGroupName, String accountName,
-                                                        String assetName, String mediaFile) throws Exception {
-        Asset asset;
-        try {
-            // In this example, we are assuming that the asset name is unique.
-            // If you already have an asset with the desired name, use the Assets.getAsync method
-            // to get the existing asset.
-            asset = manager.assets().getAsync(resourceGroupName, accountName, assetName).toBlocking().first();
-        } catch (NoSuchElementException nse) {
-            asset = null;
-        }
+    private static Asset createInputAssetAndUploadVideo(MediaServicesManager manager, String resourceGroupName, String accountName,
+                                          String assetName, String mediaFile) throws Exception {
 
-        if (asset == null) {
-            System.out.println("Creating an input asset...");
-            // Call Media Services API to create an Asset.
-            // This method creates a container in storage for the Asset.
-            // The files (blobs) associated with the asset will be stored in this container.
-            asset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName).create();
-        } else {
-            // The asset already exists and we are going to overwrite it. In your application, if you don't want to overwrite
-            // an existing asset, use an unique name.
-            System.out.println("Warning: The asset named " + assetName + "already exists. It will be overwritten.");
-        }
+        System.out.println("Creating an input asset...");
+        // Call Media Services API to create an Asset.
+        // This method creates a container in storage for the Asset.
+        // The files (blobs) associated with the asset will be stored in this container.
+        Asset asset = manager.assets().define(assetName).withExistingMediaService(resourceGroupName, accountName)
+                .create();
 
         // Use Media Services API to get back a response that contains
         // SAS URL for the Asset container into which to upload blobs.
         // That is where you would specify read-write permissions
         // and the expiration time for the SAS URL.
         ListContainerSasInput parameters = new ListContainerSasInput()
-                .withPermissions(AssetContainerPermission.READ_WRITE).withExpiryTime(DateTime.now().plusHours(4));
+                .withPermissions(AssetContainerPermission.READ_WRITE).withExpiryTime(OffsetDateTime.now().plusHours(4));
         AssetContainerSas response = manager.assets()
-                .listContainerSasAsync(resourceGroupName, accountName, assetName, parameters).toBlocking().first();
+                .listContainerSas(resourceGroupName, accountName, assetName, parameters);
 
         // Use Storage API to get a reference to the Asset container
         // that was created by calling Asset's create method.
@@ -565,13 +490,15 @@ public class AssetFilters {
                         .buildClient();
 
         // Uploading from a local file:
-        String fileToUpload = AssetFilters.class.getClassLoader().getResource(mediaFile).getPath(); // The file is a resource in CLASSPATH.
+        URI fileToUpload = AssetFilters.class.getClassLoader().getResource(mediaFile).toURI(); // The file is a
+        // resource in
+        // CLASSPATH.
         File file = new File(fileToUpload);
         BlobClient blob = container.getBlobClient(file.getName());
 
         // Use Storage API to upload the file into the container in storage.
         System.out.println("Uploading a media file to the asset...");
-        blob.uploadFromFile(fileToUpload);
+        blob.uploadFromFile(file.getPath());
 
         return asset;
     }
