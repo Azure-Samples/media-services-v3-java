@@ -3,9 +3,9 @@
 
 package sample;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Callable;
 import java.util.Arrays;
 
+import com.azure.core.management.exception.ManagementException;
 import com.azure.storage.blob.BlobContainerAsyncClient;
 import com.azure.storage.blob.BlobServiceAsyncClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
@@ -264,39 +265,6 @@ public class OfflinePlayReadyAndWidevine {
     }
 
     /**
-     * Creates an output asset. The output from the encoding Job must be written to
-     * an Asset.
-     *
-     * @param manager           This is the entry point of Azure Media resource management.
-     * @param resourceGroupName The name of the resource group within the Azure subscription.
-     * @param accountName       The Media Services account name.
-     * @param assetName         The output asset name.
-     * @return The output asset created.
-     */
-    private static Asset createOutputAsset(MediaServicesManager manager, String resourceGroupName, String accountName,
-                                           String assetName) {
-        Asset outputAsset;
-        try {
-            outputAsset = manager.assets().get(resourceGroupName, accountName, assetName);
-        } catch (NoSuchElementException nse) {
-            outputAsset = null;
-        }
-
-        if (outputAsset == null) {
-            System.out.println("Creating an output asset...");
-            outputAsset = manager.assets().define(assetName)
-                    .withExistingMediaService(resourceGroupName, accountName)
-                    .create();
-        } else {
-            // The asset already exists and we are going to overwrite it. In your application, if you don't want to overwrite
-            // an existing asset, use an unique name.
-            System.out.println("Warning: The asset named " + assetName + "already exists. It will be overwritten.");
-        }
-
-        return outputAsset;
-    }
-
-    /**
      * Submits a request to Media Services to apply the specified Transform to a
      * given input video.
      *
@@ -398,7 +366,7 @@ public class OfflinePlayReadyAndWidevine {
         try {
             // Get the policy if exists.
             policy = manager.contentKeyPolicies().get(resourceGroup, accountName, contentKeyPolicyName);
-        } catch (NoSuchElementException e) {
+        } catch (ManagementException e) {
             policy = null;
         }
 
@@ -435,6 +403,7 @@ public class OfflinePlayReadyAndWidevine {
     private static ContentKeyPolicyPlayReadyConfiguration configurePlayReadyLicenseTemplate() {
         ContentKeyPolicyPlayReadyLicense objContentKeyPolicyPlayReadyLicense = new ContentKeyPolicyPlayReadyLicense()
                 .withAllowTestDevices(true)
+                .withBeginDate(OffsetDateTime.now())
                 .withContentKeyLocation(new ContentKeyPolicyPlayReadyContentEncryptionKeyFromHeader())
                 .withContentType(ContentKeyPolicyPlayReadyContentType.ULTRA_VIOLET_STREAMING)
                 .withLicenseType(ContentKeyPolicyPlayReadyLicenseType.PERSISTENT)
