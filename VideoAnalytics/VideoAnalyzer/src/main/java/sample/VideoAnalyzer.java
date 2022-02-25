@@ -5,10 +5,11 @@ package sample;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -18,31 +19,17 @@ import java.util.concurrent.Callable;
 import java.util.Arrays;
 
 import com.azure.storage.blob.*;
-import com.azure.storage.blob.models.ListBlobsOptions;
-import com.microsoft.azure.AzureEnvironment;
-import com.microsoft.azure.credentials.ApplicationTokenCredentials;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Asset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.AssetContainerPermission;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.AssetContainerSas;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.InsightsType;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Job;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobInput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobInputAsset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobOutput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobOutputAsset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.JobState;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ListContainerSasInput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Preset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Transform;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.TransformOutput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.VideoAnalyzerPreset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
-import com.microsoft.rest.LogLevel;
 
-import org.joda.time.DateTime;
+import com.azure.core.credential.TokenCredential;
+import com.azure.core.http.policy.HttpLogDetailLevel;
+import com.azure.core.http.policy.HttpLogOptions;
+import com.azure.core.management.profile.AzureProfile;
+import com.azure.resourcemanager.mediaservices.models.*;
+import com.azure.resourcemanager.mediaservices.MediaServicesManager;
+import com.azure.identity.ClientSecretCredentialBuilder;
 
 public class VideoAnalyzer {
-    private static final String VIDEO_ANALYZER_TRANSFORM_NAME = "MyVideoAnalyzerTransformName";
+    private static final String TRANSFORM_NAME = "MyVideoAnalyzerTransformName";
     private static final String INPUT_MP4_RESOURCE = "video/ignite.mp4";
     private static final String OUTPUT_FOLDER_NAME = "Output";
 
@@ -64,13 +51,18 @@ public class VideoAnalyzer {
     private static void runAnalyzer(ConfigWrapper config) {
         // Connect to media services, please see https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
         // for details.
-        ApplicationTokenCredentials credentials = new ApplicationTokenCredentials(config.getAadClientId(),
-                config.getAadTenantId(), config.getAadSecret(), AzureEnvironment.AZURE);
-        credentials.withDefaultSubscriptionId(config.getSubscriptionId());
+        TokenCredential credential = new ClientSecretCredentialBuilder()
+                .clientId(config.getAadClientId())
+                .clientSecret(config.getAadSecret())
+                .tenantId(config.getAadTenantId())
+                .build();
+        AzureProfile profile = new AzureProfile(config.getAadTenantId(), config.getSubscriptionId(),
+                com.azure.core.management.AzureEnvironment.AZURE);
 
-        // Get MediaManager, the entry point to Azure Media resource management.
-        MediaManager manager = MediaManager.configure().withLogLevel(LogLevel.BODY_AND_HEADERS)
-                .authenticate(credentials, credentials.defaultSubscriptionId());
+        // MediaServiceManager is the entry point to Azure Media resource management.
+        MediaServicesManager manager = MediaServicesManager.configure()
+                .withLogOptions(new HttpLogOptions().setLogLevel(HttpLogDetailLevel.BODY_AND_HEADERS))
+                .authenticate(credential, profile);
         // Signed in.
 
         // Create a unique suffix so that we don't have name collisions if you run the sample
@@ -87,18 +79,27 @@ public class VideoAnalyzer {
             // Create a video analyzer preset with both video and audio insights.
             Preset preset = new VideoAnalyzerPreset().withInsightsToExtract(InsightsType.VIDEO_INSIGHTS_ONLY);
 
-            // Ensure that you have the desired encoding Transform. This is really a one
-            // time setup operation.
-            Transform videoAnalyzerTransform = getOrCreateTransform(manager, config.getResourceGroup(),
-                    config.getAccountName(), VIDEO_ANALYZER_TRANSFORM_NAME, preset);
+            List<TransformOutput> outputs = new ArrayList<>();
+            outputs.add(new TransformOutput().withPreset(preset));
+
+            // Create the transform.
+            System.out.println("Creating a transform...");
+            Transform videoAnalyzerTransform = manager.transforms()
+                    .define(TRANSFORM_NAME)
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
+                    .withOutputs(outputs)
+                    .create();
+            System.out.println("Transform created");
 
             // Create a new input Asset and upload the specified local video file into it.
             createInputAsset(manager, config.getResourceGroup(), config.getAccountName(), inputAssetName,
                     INPUT_MP4_RESOURCE);
 
             // Output from the encoding Job must be written to an Asset, so let's create one
-            Asset outputAsset = createOutputAsset(manager, config.getResourceGroup(), config.getAccountName(),
-                    outputAssetName);
+            Asset outputAsset = manager.assets()
+                    .define(outputAssetName)
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
+                    .create();
 
             Job job = submitJob(manager, config.getResourceGroup(), config.getAccountName(),
                     videoAnalyzerTransform.name(), jobName, inputAssetName, outputAsset.name());
@@ -162,13 +163,13 @@ public class VideoAnalyzer {
                 }
 
                 // Get the latest status of the job.
-                job = manager.jobs().getAsync(config.getResourceGroup(), config.getAccountName(), VIDEO_ANALYZER_TRANSFORM_NAME, jobName).toBlocking().first();
+                job = manager.jobs().get(config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME, jobName);
             } catch (Exception e) {
                 // if Event Grid or Event Hub is not configured, We will fall-back on polling instead.
                 // Polling is not a recommended best practice for production applications because of the latency it introduces.
                 // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
                 job = waitForJobToFinish(manager, config.getResourceGroup(), config.getAccountName(),
-                        VIDEO_ANALYZER_TRANSFORM_NAME, jobName);
+                        TRANSFORM_NAME, jobName);
             } finally {
                 if (eventProcessorHost != null) {
                     System.out.println("Job final state received, unregistering event processor...");
@@ -210,48 +211,9 @@ public class VideoAnalyzer {
                 scanner.close();
             }
 
-            cleanup(manager, config.getResourceGroup(), config.getAccountName(), VIDEO_ANALYZER_TRANSFORM_NAME, jobName,
+            cleanup(manager, config.getResourceGroup(), config.getAccountName(), TRANSFORM_NAME, jobName,
                     inputAssetName, outputAssetName);
         }
-    }
-
-    /**
-     * If the specified transform exists, get that transform. If it does not
-     * exist, creates a new transform with the specified output. In this case, the
-     * output is set to encode a video using the encoding preset created earlier.
-     *
-     * @param manager       The entry point of Azure Media resource management.
-     * @param resourceGroup The name of the resource group within the Azure subscription.
-     * @param accountName   The Media Services account name.
-     * @param transformName The name of the transform.
-     * @param preset        The preset.
-     * @return The transform found or created.
-     */
-    private static Transform getOrCreateTransform(MediaManager manager, String resourceGroup, String accountName,
-                                                  String transformName, Preset preset) {
-        Transform transform;
-        try {
-            // Does a Transform already exist with the desired name? Assume that an existing
-            // Transform with the desired name
-            transform = manager.transforms().getAsync(resourceGroup, accountName, transformName).toBlocking().first();
-        } catch (NoSuchElementException e) {
-            transform = null; // In case an exception is thrown
-        }
-
-        if (transform == null) {
-            TransformOutput transformOutput = new TransformOutput().withPreset(preset);
-            List<TransformOutput> outputs = new ArrayList<TransformOutput>();
-            outputs.add(transformOutput);
-
-            // Create the Transform with the outputs defined above
-            System.out.println("Creating a transform...");
-            transform = manager.transforms().define(transformName)
-                    .withExistingMediaservice(resourceGroup, accountName)
-                    .withOutputs(outputs)
-                    .create();
-        }
-
-        return transform;
     }
 
     /**
@@ -264,64 +226,44 @@ public class VideoAnalyzer {
      * @param videoResource     The file you want to upload into the asset.
      * @return The asset.
      */
-    private static Asset createInputAsset(MediaManager manager, String resourceGroupName, String accountName,
+    private static Asset createInputAsset(MediaServicesManager manager, String resourceGroupName, String accountName,
                                           String assetName, String videoResource) throws Exception {
         // In this example, we are assuming that the asset name is unique.
         // Call Media Services API to create an Asset.
         // This method creates a container in storage for the Asset.
         // The files (blobs) associated with the asset will be stored in this container.
         System.out.println("Creating an input asset...");
-        Asset asset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
+        Asset asset = manager.assets().define(assetName).withExistingMediaService(resourceGroupName, accountName)
                 .create();
 
         ListContainerSasInput parameters = new ListContainerSasInput()
-                .withPermissions(AssetContainerPermission.READ_WRITE).withExpiryTime(DateTime.now().plusHours(4));
+                .withPermissions(AssetContainerPermission.READ_WRITE).withExpiryTime(OffsetDateTime.now().plusHours(4));
 
         // Use Media Services API to get back a response that contains
         // SAS URL for the Asset container into which to upload blobs.
         // That is where you would specify read-write permissions
         // and the expiration time for the SAS URL.
         AssetContainerSas response = manager.assets()
-                .listContainerSasAsync(resourceGroupName, accountName, assetName, parameters).toBlocking().first();
+                .listContainerSas(resourceGroupName, accountName, assetName, parameters);
 
         // Use Storage API to get a reference to the Asset container.
         // That was created by calling Asset's create() method.
         BlobContainerAsyncClient container =
                 new BlobContainerClientBuilder()
-                        .connectionString(response.assetContainerSasUrls().get(0))
+                        .endpoint(response.assetContainerSasUrls().get(0))
                         .buildAsyncClient();
 
-        String fileToUpload = VideoAnalyzer.class.getClassLoader().getResource(videoResource).getPath();
+        URI fileToUpload = VideoAnalyzer.class.getClassLoader().getResource(videoResource).toURI(); // The file is a
+        // resource in
+        // CLASSPATH.
         File file = new File(fileToUpload);
         BlobAsyncClient blob = container.getBlobAsyncClient(file.getName());
 
         // Use Storage API to upload the file into the container in storage.
         System.out.println("Uploading a media file to the asset...");
-        blob.uploadFromFile(fileToUpload);
+        blob.uploadFromFile(file.getPath());
 
         return asset;
-    }
-
-    /**
-     * Creates an output asset. The output from the encoding Job must be written to
-     * an Asset.
-     *
-     * @param manager           This is the entry point of Azure Media resource
-     *                          management.
-     * @param resourceGroupName The name of the resource group within the Azure
-     *                          subscription.
-     * @param accountName       The Media Services account name.
-     * @param assetName         The output asset name.
-     * @return
-     */
-    private static Asset createOutputAsset(MediaManager manager, String resourceGroupName, String accountName,
-                                           String assetName) {
-        // In this example, we are assuming that the asset name is unique.
-        System.out.println("Creating an output asset...");
-        Asset outputAsset = manager.assets().define(assetName).withExistingMediaservice(resourceGroupName, accountName)
-                .create();
-
-        return outputAsset;
     }
 
     /**
@@ -340,7 +282,7 @@ public class VideoAnalyzer {
      *                          store the result of the encoding job.
      * @return The job created
      */
-    private static Job submitJob(MediaManager manager, String resourceGroupName, String accountName,
+    private static Job submitJob(MediaServicesManager manager, String resourceGroupName, String accountName,
                                  String transformName, String jobName, String inputAssetName, String outputAssetName) {
         JobInput jobInput = new JobInputAsset().withAssetName(inputAssetName);
 
@@ -372,7 +314,7 @@ public class VideoAnalyzer {
      * @param jobName       The name of the job you submitted.
      * @return The job object.
      */
-    private static Job waitForJobToFinish(MediaManager manager, String resourceGroup, String accountName,
+    private static Job waitForJobToFinish(MediaServicesManager manager, String resourceGroup, String accountName,
                                           String transformName, String jobName) {
         final int SLEEP_INTERVAL = 60 * 1000;   // 1 minute.
 
@@ -380,7 +322,7 @@ public class VideoAnalyzer {
         boolean exit = false;
 
         do {
-            job = manager.jobs().getAsync(resourceGroup, accountName, transformName, jobName).toBlocking().first();
+            job = manager.jobs().get(resourceGroup, accountName, transformName, jobName);
 
             if (job.state() == JobState.FINISHED || job.state() == JobState.ERROR || job.state() == JobState.CANCELED) {
                 exit = true;
@@ -418,17 +360,16 @@ public class VideoAnalyzer {
      * @throws URISyntaxException
      * @throws IOException
      */
-    private static void downloadOutputAsset(MediaManager manager, String resourceGroup, String accountName,
+    private static void downloadOutputAsset(MediaServicesManager manager, String resourceGroup, String accountName,
                                             String assetName, File outputFolder) throws URISyntaxException, IOException {
         // Specify read permission and 1 hour expiration time for the SAS URL.
         ListContainerSasInput parameters = new ListContainerSasInput()
                 .withPermissions(AssetContainerPermission.READ)
-                .withExpiryTime(DateTime.now().plusHours(1));
+                .withExpiryTime(OffsetDateTime.now().plusHours(1));
 
         // Call Media Services API to get SAS URLs.
         AssetContainerSas assetContainerSas = manager.assets()
-                .listContainerSasAsync(resourceGroup, accountName, assetName, parameters)
-                .toBlocking().first();
+                .listContainerSas(resourceGroup, accountName, assetName, parameters);
 
         // Use Storage API to get a reference to the Asset container.
         BlobContainerClient container =
@@ -465,15 +406,15 @@ public class VideoAnalyzer {
      * @param inputAssetName    The input asset name.
      * @param outputAssetName   The output asset name.
      */
-    private static void cleanup(MediaManager manager, String resourceGroupName, String accountName,
+    private static void cleanup(MediaServicesManager manager, String resourceGroupName, String accountName,
                                 String transformName, String jobName, String inputAssetName, String outputAssetName) {
         if (manager == null) {
             return;
         }
 
-        manager.jobs().deleteAsync(resourceGroupName, accountName, transformName, jobName).await();
-        manager.assets().deleteAsync(resourceGroupName, accountName, inputAssetName).await();
-        manager.assets().deleteAsync(resourceGroupName, accountName, outputAssetName).await();
+        manager.jobs().delete(resourceGroupName, accountName, transformName, jobName);
+        manager.assets().delete(resourceGroupName, accountName, inputAssetName);
+        manager.assets().delete(resourceGroupName, accountName, outputAssetName);
     }
 }
 
