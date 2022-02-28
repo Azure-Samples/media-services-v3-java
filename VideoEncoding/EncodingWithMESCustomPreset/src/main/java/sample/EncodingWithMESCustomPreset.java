@@ -288,6 +288,16 @@ public class EncodingWithMESCustomPreset {
         return transform;
     }
 
+    /**
+     * Creates a new input Asset and uploads the specified local video file into it.
+     *
+     * @param manager           This is the entry point of Azure Media resource management.
+     * @param resourceGroupName The name of the resource group within the Azure subscription.
+     * @param accountName       The Media Services account name.
+     * @param assetName         The name of the asset where the media file to uploaded to.
+     * @param mediaFile         The path of a media file to be uploaded into the asset.
+     * @return The asset.
+     */
         private static Asset createInputAsset(MediaServicesManager manager, String resourceGroupName, String accountName,
                 String assetName, String mediaFile) throws Exception {
 
