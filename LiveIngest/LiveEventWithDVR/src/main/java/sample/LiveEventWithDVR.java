@@ -76,7 +76,11 @@ public class LiveEventWithDVR {
             // Note: When creating a LiveEvent, you can specify allowed IP addresses in one of the following formats:                 
             //       IpV4 address with 4 numbers
             //       CIDR address range
-            IpRange allAllowIPRange = new IpRange().withName("AllowAll").withAddress("0.0.0.0").withSubnetPrefixLength(0);
+            IpRange allAllowIPRange =
+                    new IpRange()
+                            .withName("AllowAll")
+                            .withAddress("0.0.0.0")
+                            .withSubnetPrefixLength(0);
             List<IpRange> listIPRanges = new ArrayList<>();
             listIPRanges.add(allAllowIPRange);
 
@@ -86,7 +90,11 @@ public class LiveEventWithDVR {
 
             // Create the LiveEvent Preview IP access control
             LiveEventPreview liveEventPreview = new LiveEventPreview();
-            liveEventPreview.withAccessControl(new LiveEventPreviewAccessControl().withIp(new IpAccessControl().withAllow(listIPRanges)));
+            liveEventPreview.withAccessControl(
+                    new LiveEventPreviewAccessControl()
+                            .withIp(new IpAccessControl()
+                                    .withAllow(listIPRanges))
+            );
 
             // Set this to Default or Low Latency
             // When using Low Latency mode, you must configure the Azure Media Player to use the 
