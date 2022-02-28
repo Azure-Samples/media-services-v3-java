@@ -3,42 +3,23 @@
 
 package sample;
 
+import com.azure.core.management.AzureEnvironment;
 import com.azure.storage.blob.BlobContainerAsyncClient;
 import com.azure.storage.blob.BlobServiceAsyncClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
-import com.azure.storage.blob.models.ListBlobsOptions;
-import org.joda.time.Period;
 
+import java.time.Duration;
 import java.util.*;
 
-import com.microsoft.azure.credentials.ApplicationTokenCredentials;
-import com.microsoft.aad.adal4j.AuthenticationException;
-import com.microsoft.azure.AzureEnvironment;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.Asset;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.AssetFilter;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.IPAccessControl;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.IPRange;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ListPathsResponse;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEvent;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventEncoding;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventEncodingType;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventInput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventInputAccessControl;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventInputProtocol;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventPreview;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventPreviewAccessControl;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveEventResourceState;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.LiveOutput;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.PresentationTimeRange;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamOptionsFlag;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpoint;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingEndpointResourceState;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingLocator;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPath;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.StreamingPolicyStreamingProtocol;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.implementation.MediaManager;
-import com.microsoft.rest.LogLevel;
-import com.microsoft.azure.management.mediaservices.v2020_05_01.ApiErrorException;
+import javax.naming.AuthenticationException;
+import com.azure.core.credential.TokenCredential;
+import com.azure.core.http.policy.HttpLogDetailLevel;
+import com.azure.core.http.policy.HttpLogOptions;
+import com.azure.core.management.exception.ManagementException;
+import com.azure.core.management.profile.AzureProfile;
+import com.azure.resourcemanager.mediaservices.models.*;
+import com.azure.resourcemanager.mediaservices.MediaServicesManager;
+import com.azure.identity.ClientSecretCredentialBuilder;
 
 public class LiveEventWithDVR {
     public static void main(String[] args) {
@@ -58,12 +39,18 @@ public class LiveEventWithDVR {
     private static void runLiveEvent(ConfigWrapper config) {
         // Connect to media services, please see https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
         // for details.
-        ApplicationTokenCredentials credentials = new ApplicationTokenCredentials(config.getAadClientId(),
-                config.getAadTenantId(), config.getAadSecret(), AzureEnvironment.AZURE);
-        credentials.withDefaultSubscriptionId(config.getSubscriptionId());
+        TokenCredential credential = new ClientSecretCredentialBuilder()
+                .clientId(config.getAadClientId())
+                .clientSecret(config.getAadSecret())
+                .tenantId(config.getAadTenantId())
+                .build();
+        AzureProfile profile = new AzureProfile(config.getAadTenantId(), config.getSubscriptionId(),
+                AzureEnvironment.AZURE);
 
-        MediaManager manager = MediaManager.configure().withLogLevel(LogLevel.BODY_AND_HEADERS)
-                .authenticate(credentials, credentials.defaultSubscriptionId());
+        // MediaServiceManager is the entry point to Azure Media resource management.
+        MediaServicesManager manager = MediaServicesManager.configure()
+                .withLogOptions(new HttpLogOptions().setLogLevel(HttpLogDetailLevel.BODY_AND_HEADERS))
+                .authenticate(credential, profile);
         // Signed in.
 
         // Creating a unique suffix so that we don't have name collisions if you run the sample
@@ -76,7 +63,7 @@ public class LiveEventWithDVR {
         String dvrStreamingLocatorName = "drvLocator-" + uuid.toString();
         String fullArchiveStreamingLocator = "fullLocator-" + uuid.toString();
         String drvAssetFilterName = "filter-" + uniqueness;
-        String streamingEndpointName = "se";  // Change this to your Streaming Endpoint name.
+        String streamingEndpointName = "default";  // Change this to your Streaming Endpoint name.
         MediaServicesEventProcessor eventProcessorHost = null;
         boolean stopEndpoint = false;
 
@@ -89,17 +76,25 @@ public class LiveEventWithDVR {
             // Note: When creating a LiveEvent, you can specify allowed IP addresses in one of the following formats:                 
             //       IpV4 address with 4 numbers
             //       CIDR address range
-            IPRange allAllowIPRange = new IPRange().withName("AllowAll").withAddress("0.0.0.0").withSubnetPrefixLength(0);
-            List<IPRange> listIPRanges = new ArrayList<>();
+            IpRange allAllowIPRange =
+                    new IpRange()
+                            .withName("AllowAll")
+                            .withAddress("0.0.0.0")
+                            .withSubnetPrefixLength(0);
+            List<IpRange> listIPRanges = new ArrayList<>();
             listIPRanges.add(allAllowIPRange);
 
             // Create the LiveEvent input IP access control.
             LiveEventInputAccessControl liveEventInputAccess = new LiveEventInputAccessControl();
-            liveEventInputAccess.withIp(new IPAccessControl().withAllow(listIPRanges));
+            liveEventInputAccess.withIp(new IpAccessControl().withAllow(listIPRanges));
 
             // Create the LiveEvent Preview IP access control
             LiveEventPreview liveEventPreview = new LiveEventPreview();
-            liveEventPreview.withAccessControl(new LiveEventPreviewAccessControl().withIp(new IPAccessControl().withAllow(listIPRanges)));
+            liveEventPreview.withAccessControl(
+                    new LiveEventPreviewAccessControl()
+                            .withIp(new IpAccessControl()
+                                    .withAllow(listIPRanges))
+            );
 
             // Set this to Default or Low Latency
             // When using Low Latency mode, you must configure the Azure Media Player to use the 
@@ -143,10 +138,10 @@ public class LiveEventWithDVR {
             // Set EncodingType to STANDARD to enable a transcoding LiveEvent, and NONE to enable a pass-through LiveEvent
             System.out.println("Creating the LiveEvent, please be patient this can take time...");
             LiveEvent liveEvent = manager.liveEvents().define(liveEventName)
+                    .withRegion(config.getRegion())
                     .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
                     .withAutoStart(true)
                     .withInput(new LiveEventInput().withStreamingProtocol(LiveEventInputProtocol.RTMP).withAccessControl(liveEventInputAccess))
-                    .withLocation(config.getRegion())
                     .withEncoding(new LiveEventEncoding().withEncodingType(LiveEventEncodingType.NONE).withPresetName(null))
                     .withUseStaticHostname(false)
                     .withDescription("Sample LiveEvent for testing")
@@ -184,7 +179,7 @@ public class LiveEventWithDVR {
             System.out.println("Creating an asset named " + fullArchiveAssetName + ".");
             System.out.println();
             Asset fullArchiveAsset = manager.assets().define(fullArchiveAssetName)
-                    .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
                     .create();
 
             // Create an AssetFilter for StreamingLocator
@@ -203,7 +198,7 @@ public class LiveEventWithDVR {
                     .withExistingLiveEvent(config.getResourceGroup(), config.getAccountName(), liveEventName)
                     // withArchiveWindowLength: Can be set from 3 minutes to 25 hours. content that falls outside of ArchiveWindowLength
                     // is continuously discarded from storage and is non-recoverable. For a full event archive, set to the maximum, 25 hours.
-                    .withArchiveWindowLength(Period.hours(25))
+                    .withArchiveWindowLength(Duration.ofHours(25))
                     .withAssetName(fullArchiveAsset.name())
                     .withManifestName(manifestName)
                     .withDescription("Sample LiveOutput for testing")
@@ -216,7 +211,7 @@ public class LiveEventWithDVR {
             List<String> assetFilters = new ArrayList<>();
             assetFilters.add(drvAssetFilter.name());
             StreamingLocator streamingLocator = manager.streamingLocators().define(dvrStreamingLocatorName)
-                    .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                    .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
                     .withAssetName(fullArchiveAsset.name())
                     .withStreamingPolicyName("Predefined_ClearStreamingOnly")
                     .withFilters(assetFilters)  // Associate filters with StreamingLocator
@@ -224,8 +219,7 @@ public class LiveEventWithDVR {
 
             // Get a Streaming Endpoint on the account, the Streaming Endpoint must exist.
             StreamingEndpoint streamingEndpoint = manager.streamingEndpoints()
-                    .getAsync(config.getResourceGroup(), config.getAccountName(), streamingEndpointName)
-                    .toBlocking().first();
+                    .get(config.getResourceGroup(), config.getAccountName(), streamingEndpointName);
             if (streamingEndpoint == null) {
                 throw new Exception("Streaming Endpoint " + streamingEndpointName + " does not exist.");
             }
@@ -234,8 +228,7 @@ public class LiveEventWithDVR {
             if (streamingEndpoint.resourceState() != StreamingEndpointResourceState.RUNNING) {
                 System.out.println("Streaming Endpoint was Stopped, restarting now...");
                 manager.streamingEndpoints()
-                        .startAsync(config.getResourceGroup(), config.getAccountName(), streamingEndpointName)
-                        .await();
+                        .start(config.getResourceGroup(), config.getAccountName(), streamingEndpointName);
 
                 // Since we started the endpoint, we should stop it in cleanup.
                 stopEndpoint = true;
@@ -265,7 +258,7 @@ public class LiveEventWithDVR {
             if (!stopEndpoint) {
                 // Create a StreamingLocator for the full archive.
                 StreamingLocator fullStreamingLocator = manager.streamingLocators().define(fullArchiveStreamingLocator)
-                        .withExistingMediaservice(config.getResourceGroup(), config.getAccountName())
+                        .withExistingMediaService(config.getResourceGroup(), config.getAccountName())
                         .withAssetName(fullArchiveAsset.name())
                         .withStreamingPolicyName("Predefined_ClearStreamingOnly")
                         .create();
@@ -286,9 +279,9 @@ public class LiveEventWithDVR {
                 if (cause instanceof AuthenticationException) {
                     System.out.println("ERROR: Authentication error, please check your account settings in appsettings.json.");
                     break;
-                } else if (cause instanceof ApiErrorException) {
-                    ApiErrorException apiException = (ApiErrorException) cause;
-                    System.out.println("ERROR: " + apiException.body().error().message());
+                } else if (cause instanceof ManagementException) {
+                    ManagementException managementException = (ManagementException) cause;
+                    System.out.println("ERROR: " + managementException.getValue().getMessage());
                     break;
                 }
                 cause = cause.getCause();
@@ -302,7 +295,7 @@ public class LiveEventWithDVR {
 
             if (stopEndpoint) {
                 // Because we started the endpoint, we'll stop it.
-                manager.streamingEndpoints().stopAsync(config.getResourceGroup(), config.getAccountName(), streamingEndpointName).await();
+                manager.streamingEndpoints().stop(config.getResourceGroup(), config.getAccountName(), streamingEndpointName);
             } else {
                 // We will keep the endpoint running because it was not started by us. There are costs to keep it running.
                 // Please refer https://azure.microsoft.com/en-us/pricing/details/media-services/ for pricing.
@@ -328,11 +321,10 @@ public class LiveEventWithDVR {
      * @param streamingLocatorName The locator name.
      * @param streamingEndpoint    The streaming endpoint.
      */
-    private static void printPaths(ConfigWrapper config, MediaManager manager, String streamingLocatorName,
+    private static void printPaths(ConfigWrapper config, MediaServicesManager manager, String streamingLocatorName,
                                    StreamingEndpoint streamingEndpoint) {
         ListPathsResponse paths = manager.streamingLocators()
-                .listPathsAsync(config.getResourceGroup(), config.getAccountName(), streamingLocatorName)
-                .toBlocking().first();
+                .listPaths(config.getResourceGroup(), config.getAccountName(), streamingLocatorName);
 
         StringBuilder stringBuilder = new StringBuilder();
         String playerPath = "";
@@ -340,7 +332,7 @@ public class LiveEventWithDVR {
             if (streamingPath.paths().size() > 0) {
                 stringBuilder.append(
                         "\t" + streamingPath.streamingProtocol() + "-" + streamingPath.encryptionScheme() + "\n");
-                String strStreamingUlr = "https://" + streamingEndpoint.hostName() + "/" + streamingPath.paths().get(0);
+                String strStreamingUlr = "https://" + streamingEndpoint.hostname() + "/" + streamingPath.paths().get(0);
                 stringBuilder.append("\t\t" + strStreamingUlr + "\n");
 
                 if (streamingPath.streamingProtocol() == StreamingPolicyStreamingProtocol.DASH) {
@@ -368,11 +360,11 @@ public class LiveEventWithDVR {
      * @param accountName   The Media Services account name
      * @param liveEventName The name of the LiveEvent
      */
-    private static void CleanupLiveEventAndOutput(MediaManager manager, String resourceGroup, String accountName, String liveEventName) {
+    private static void CleanupLiveEventAndOutput(MediaServicesManager manager, String resourceGroup, String accountName, String liveEventName) {
         LiveEvent liveEvent;
         try {
-            liveEvent = manager.liveEvents().getAsync(resourceGroup, accountName, liveEventName).toBlocking().first();
-        } catch (NoSuchElementException e) {
+            liveEvent = manager.liveEvents().get(resourceGroup, accountName, liveEventName);
+        } catch (ManagementException e) {
             liveEvent = null;
         }
         if (liveEvent == null) {
@@ -380,22 +372,21 @@ public class LiveEventWithDVR {
         }
 
         // Cleanup LiveOutput first
-        Iterator<LiveOutput> iter = manager.liveOutputs().listAsync(resourceGroup, accountName, liveEventName).toBlocking().getIterator();
-        iter.forEachRemaining(liveOutput -> manager.liveOutputs().deleteAsync(resourceGroup, accountName, liveEventName, liveOutput.name()).await());
+        Iterator<LiveOutput> iter = manager.liveOutputs().list(resourceGroup, accountName, liveEventName).iterator();
+        iter.forEachRemaining(liveOutput -> manager.liveOutputs().delete(resourceGroup, accountName, liveEventName, liveOutput.name()));
 
         if (liveEvent.resourceState() == LiveEventResourceState.RUNNING) {
-            manager.liveEvents().stopAsync(resourceGroup, accountName, liveEventName).await();
+            manager.liveEvents().stop(resourceGroup, accountName, liveEventName, new LiveEventActionInput().withRemoveOutputsOnStop(false));
         }
-        manager.liveEvents().deleteAsync(resourceGroup, accountName, liveEventName).await();
+        manager.liveEvents().delete(resourceGroup, accountName, liveEventName);
     }
 
-    private static void cleanupLocator(MediaManager manager, String resourceGroup, String accountName, String streamingLocatorName) {
+    private static void cleanupLocator(MediaServicesManager manager, String resourceGroup, String accountName, String streamingLocatorName) {
         try {
-            manager.streamingLocators().deleteAsync(resourceGroup, accountName, streamingLocatorName).await();
-        } catch (ApiErrorException e) {
-            System.out.println("ApiErrorException");
-            System.out.println("\tCode: " + e.body().error().code());
-            System.out.println("\tMessage: " + e.body().error().message());
+            manager.streamingLocators().delete(resourceGroup, accountName, streamingLocatorName);
+        } catch (ManagementException e) {
+            System.out.println("ManagementException");
+            System.out.println("\tMessage: " + e.getValue().getMessage());
         }
     }
 }
