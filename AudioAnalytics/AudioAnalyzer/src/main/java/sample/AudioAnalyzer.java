@@ -96,6 +96,9 @@ public class AudioAnalyzer {
                     .create();
             System.out.println("Transform created");
 
+            createInputAsset(manager, config.getResourceGroup(), config.getAccountName(), inputAssetName,
+                    INPUT_MP4_RESOURCE);
+
             // Output from the encoding Job must be written to an Asset, so let's create
             // one. Note that we are using a unique asset name, there should not be a name
             // collision.
@@ -119,7 +122,7 @@ public class AudioAnalyzer {
                 // Cleanup storage container. We will config Event Hub to use the storage container configured in appsettings.json.
                 // All the blobs in <The container configured in appsettings.json> will be deleted.
                 BlobServiceAsyncClient client = new BlobServiceClientBuilder()
-                        .connectionString(storageConnectionString)
+                        .endpoint(storageConnectionString)
                         .buildAsyncClient();
                 BlobContainerAsyncClient container = client.getBlobContainerAsyncClient(config.getStorageContainerName());
                 container.listBlobs().collectList().block()
@@ -249,7 +252,7 @@ public class AudioAnalyzer {
         // That was created by calling Asset's create() method.
         BlobContainerClient container =
                 new BlobContainerClientBuilder()
-                        .connectionString(response.assetContainerSasUrls().get(0))
+                        .endpoint(response.assetContainerSasUrls().get(0))
                         .buildClient();
 
         URI fileToUpload = AudioAnalyzer.class.getClassLoader().getResource(videoResource).toURI(); // The file is a
@@ -373,7 +376,7 @@ public class AudioAnalyzer {
         // Use Storage API to get a reference to the Asset container.
         BlobContainerClient container =
                 new BlobContainerClientBuilder()
-                        .connectionString(assetContainerSas.assetContainerSasUrls().get(0))
+                        .endpoint(assetContainerSas.assetContainerSasUrls().get(0))
                         .buildClient();
 
         File directory = new File(outputFolder, assetName);
