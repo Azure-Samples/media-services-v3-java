@@ -441,7 +441,7 @@ public class EncodingWithMESCustomPreset {
 
         BlobContainerClient container =
                 new BlobContainerClientBuilder()
-                        .connectionString(assetContainerSas.assetContainerSasUrls().get(0))
+                        .endpoint(assetContainerSas.assetContainerSasUrls().get(0))
                         .buildClient();
 
         File directory = new File(outputFolder, assetName);
