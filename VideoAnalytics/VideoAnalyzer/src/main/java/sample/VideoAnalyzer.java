@@ -5,7 +5,6 @@ package sample;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -17,9 +16,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Callable;
 import java.util.Arrays;
+import java.net.URI;
 
-import com.azure.storage.blob.*;
 
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerAsyncClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobContainerClientBuilder;
+import com.azure.storage.blob.BlobServiceAsyncClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
 import com.azure.core.credential.TokenCredential;
 import com.azure.core.http.policy.HttpLogDetailLevel;
 import com.azure.core.http.policy.HttpLogOptions;
@@ -248,16 +253,16 @@ public class VideoAnalyzer {
 
         // Use Storage API to get a reference to the Asset container.
         // That was created by calling Asset's create() method.
-        BlobContainerAsyncClient container =
+        BlobContainerClient container =
                 new BlobContainerClientBuilder()
                         .endpoint(response.assetContainerSasUrls().get(0))
-                        .buildAsyncClient();
+                        .buildClient();
 
         URI fileToUpload = VideoAnalyzer.class.getClassLoader().getResource(videoResource).toURI(); // The file is a
         // resource in
         // CLASSPATH.
         File file = new File(fileToUpload);
-        BlobAsyncClient blob = container.getBlobAsyncClient(file.getName());
+        BlobClient blob = container.getBlobClient(file.getName());
 
         // Use Storage API to upload the file into the container in storage.
         System.out.println("Uploading a media file to the asset...");
@@ -374,7 +379,7 @@ public class VideoAnalyzer {
         // Use Storage API to get a reference to the Asset container.
         BlobContainerClient container =
                 new BlobContainerClientBuilder()
-                        .connectionString(assetContainerSas.assetContainerSasUrls().get(0))
+                        .endpoint(assetContainerSas.assetContainerSasUrls().get(0))
                         .buildClient();
 
         File directory = new File(outputFolder, assetName);
