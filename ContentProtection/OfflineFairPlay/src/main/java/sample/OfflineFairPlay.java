@@ -12,7 +12,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -283,7 +282,7 @@ public class OfflineFairPlay {
         Asset outputAsset;
         try {
             outputAsset = manager.assets().get(resourceGroupName, accountName, assetName);
-        } catch (NoSuchElementException nse) {
+        } catch (ManagementException nse) {
             outputAsset = null;
         }
 
@@ -406,7 +405,7 @@ public class OfflineFairPlay {
         try {
             // Get the policy if exists.
             policy = manager.contentKeyPolicies().get(config.getResourceGroup(), config.getAccountName(), contentKeyPolicyName);
-        } catch (NoSuchElementException | ManagementException e) {
+        } catch (ManagementException e) {
             policy = null;
         }
 
@@ -481,7 +480,7 @@ public class OfflineFairPlay {
      */
     private static StreamingLocator createStreamingLocator(MediaServicesManager manager, String resourceGroup, String accountName,
                                                            String assetName, String locatorName, String contentPolicyName) {
-        StreamingPolicy customStreamingPolicy = getOrCreateCustomStreamingPloliyForFairPlay(manager, resourceGroup,
+        StreamingPolicy customStreamingPolicy = getOrCreateCustomStreamingPolicyForFairPlay(manager, resourceGroup,
                 accountName, FAIRPLAY_STREAMING_POLICY_NAME);
 
         System.out.println("Creating a streaming locator...");
@@ -503,12 +502,12 @@ public class OfflineFairPlay {
      * @param streamingPolicyName   The name of the streaming policy.
      * @return StreamingPolicy
      */
-    private static StreamingPolicy getOrCreateCustomStreamingPloliyForFairPlay(MediaServicesManager manager, String resourceGroup,
+    private static StreamingPolicy getOrCreateCustomStreamingPolicyForFairPlay(MediaServicesManager manager, String resourceGroup,
                                                                                String accountName, String streamingPolicyName) {
         StreamingPolicy streamingPolicy;
         try {
             streamingPolicy = manager.streamingPolicies().get(resourceGroup, accountName, streamingPolicyName);
-        } catch (NoSuchElementException e) {
+        } catch (ManagementException e) {
             streamingPolicy = null;
         }
 
