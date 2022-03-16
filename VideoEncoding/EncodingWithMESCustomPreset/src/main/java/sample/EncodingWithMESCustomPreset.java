@@ -166,6 +166,9 @@ public class EncodingWithMESCustomPreset {
                     System.out.println("ERROR: " + apiException.getValue().getMessage());
                     break;
                 }
+                else {
+                    System.out.println("Error: " + cause);
+                }
                 cause = cause.getCause();
             }
             System.out.println();
