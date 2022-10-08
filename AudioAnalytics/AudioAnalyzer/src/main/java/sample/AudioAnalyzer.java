@@ -31,6 +31,7 @@ import com.azure.core.http.policy.HttpLogOptions;
 import com.azure.core.management.profile.AzureProfile;
 import com.azure.resourcemanager.mediaservices.models.*;
 import com.azure.resourcemanager.mediaservices.MediaServicesManager;
+import com.azure.identity.AzureAuthorityHosts;
 import com.azure.identity.ClientSecretCredentialBuilder;
 
 public class AudioAnalyzer {
@@ -56,13 +57,15 @@ public class AudioAnalyzer {
     private static void runAnalyzer(ConfigWrapper config) {
         // Connect to media services, please see https://docs.microsoft.com/en-us/azure/media-services/latest/configure-connect-java-howto
         // for details.
+        //Add authorityhost to connect to azure china
         TokenCredential credential = new ClientSecretCredentialBuilder()
                 .clientId(config.getAadClientId())
                 .clientSecret(config.getAadSecret())
                 .tenantId(config.getAadTenantId())
+                .authorityHost(AzureAuthorityHosts.AZURE_CHINA)
                 .build();
         AzureProfile profile = new AzureProfile(config.getAadTenantId(), config.getSubscriptionId(),
-                com.azure.core.management.AzureEnvironment.AZURE);
+                com.azure.core.management.AzureEnvironment.AZURE_CHINA);
 
         // MediaServiceManager is the entry point to Azure Media resource management.
         MediaServicesManager manager = MediaServicesManager.configure()
